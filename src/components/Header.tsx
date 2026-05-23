@@ -1,16 +1,18 @@
 "use client";
 
 import { Search, Bell, User, Check, Trash2, ShoppingBag, UserPlus, Info } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
+import type { Notification } from "@/lib/types";
+import { formatDistanceToNow } from "date-fns";
 
 export default function Header() {
   const pathname = usePathname();
+  const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
-  
-  // Close dropdown on click outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
@@ -21,17 +23,51 @@ export default function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: "New Order #ORD-2024", desc: "Arjun Kumar placed an order for Rs. 4,500", time: "5m ago", type: "order", read: false },
-    { id: 2, title: "New Customer Signup", desc: "Sneha Reddy created a new account", time: "2h ago", type: "user", read: false },
-    { id: 3, title: "Stock Alert: White Oxford", desc: "Classic White Oxford is running low (2 left)", time: "5h ago", type: "alert", read: true },
-    { id: 4, title: "Order Cancelled #ORD-2021", desc: "Order was cancelled by the customer", time: "1d ago", type: "alert", read: true },
-  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  
+  useEffect(() => {
+    fetchNotifications();
+    
+    // Subscribe to new notifications
+    const channel = supabase
+      .channel('notifications-changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'notifications' 
+      }, () => {
+        fetchNotifications();
+      })
+      .subscribe();
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
-  const markAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+  async function fetchNotifications() {
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (!error) {
+      setNotifications(data || []);
+    }
+  }
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  const markAllRead = async () => {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("is_read", false);
+
+    if (!error) {
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+    }
   };
 
   const getIcon = (type: string) => {
@@ -53,6 +89,20 @@ export default function Header() {
       .join(" ");
   };
 
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   return (
     <header 
       className="fixed top-0 right-0 left-64 h-16 border-b border-gray-100 flex items-center justify-between px-8 z-[100]"
@@ -65,20 +115,7 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-6">
-        <div className="relative group flex items-center">
-          <div className="absolute left-3.5 flex items-center pointer-events-none">
-            <Search className="w-4 h-4 text-text-muted group-focus-within:text-brand-gold transition-colors" />
-          </div>
-          <input 
-            type="text" 
-            placeholder="Search anything..." 
-            className="pl-11 pr-16 py-2.5 bg-gray-50/80 border border-gray-100 rounded-xl text-sm w-[280px] focus:w-[320px] outline-none focus:bg-white focus:border-brand-gold focus:ring-4 focus:ring-brand-gold/5 transition-all duration-300 placeholder:text-text-muted/60"
-          />
-          <div className="absolute right-3 hidden lg:flex items-center gap-1 px-1.5 py-1 bg-white border border-gray-200 rounded-md shadow-sm pointer-events-none group-focus-within:opacity-0 transition-opacity">
-            <span className="text-[10px] font-bold text-text-muted">⌘</span>
-            <span className="text-[10px] font-bold text-text-muted">K</span>
-          </div>
-        </div>
+
 
         <div className="relative" ref={notificationRef}>
           <button 
@@ -116,9 +153,9 @@ export default function Header() {
                     {notifications.map((n) => (
                       <div 
                         key={n.id} 
-                        className={`p-4 flex gap-4 hover:bg-gray-50 transition-colors relative cursor-pointer group ${!n.read ? 'bg-brand-gold/[0.02]' : ''}`}
+                        className={`p-4 flex gap-4 hover:bg-gray-50 transition-colors relative cursor-pointer group ${!n.is_read ? 'bg-brand-gold/[0.02]' : ''}`}
                       >
-                        {!n.read && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-gold"></div>}
+                        {!n.is_read && <div className="absolute left-0 top-0 bottom-0 w-1 bg-brand-gold"></div>}
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
                           n.type === 'order' ? 'bg-blue-50 text-blue-500' : 
                           n.type === 'user' ? 'bg-purple-50 text-purple-500' : 
@@ -128,13 +165,15 @@ export default function Header() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start mb-0.5">
-                            <h4 className={`text-sm leading-tight truncate ${!n.read ? 'font-bold text-text-primary' : 'text-text-secondary font-medium'}`}>
+                            <h4 className={`text-sm leading-tight truncate ${!n.is_read ? 'font-bold text-text-primary' : 'text-text-secondary font-medium'}`}>
                               {n.title}
                             </h4>
-                            <span className="text-[10px] text-text-muted whitespace-nowrap ml-2">{n.time}</span>
+                            <span className="text-[10px] text-text-muted whitespace-nowrap ml-2">
+                              {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                            </span>
                           </div>
                           <p className="text-xs text-text-muted line-clamp-2 leading-relaxed">
-                            {n.desc}
+                            {n.description}
                           </p>
                         </div>
                       </div>
@@ -168,8 +207,8 @@ export default function Header() {
           className="flex items-center gap-3 pl-4 border-l border-gray-200 hover:bg-gray-50 transition-all px-3 py-1.5 rounded-xl group"
         >
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-bold text-text-primary leading-none group-hover:text-brand-gold transition-colors">Rahul Sharma</p>
-            <p className="text-xs text-text-muted mt-1">Super Admin</p>
+            <p className="text-sm font-bold text-text-primary leading-none group-hover:text-brand-gold transition-colors">Administrator</p>
+            <p className="text-xs text-text-muted mt-1">{user?.email || "Super Admin"}</p>
           </div>
           <div className="w-9 h-9 rounded-full bg-brand-gold flex items-center justify-center text-white border-2 border-white shadow-sm overflow-hidden group-hover:scale-105 transition-transform">
             <User className="w-5 h-5" />

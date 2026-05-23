@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   GripVertical, 
   Edit, 
@@ -16,22 +16,26 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
-  Upload
+  Upload,
+  Trash2,
+  Columns
 } from "lucide-react";
 import { Reorder, useDragControls } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { initialMainCategories, initialProducts } from "@/lib/data";
+import { supabase } from "@/lib/supabase";
+import { useStoreSettings } from "@/lib/StoreContext";
+import type { Category, Product } from "@/lib/types";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 interface Section {
-  id: number;
+  id: string;
   name: string;
   active: boolean;
-  type: "banner" | "products" | "categories" | "content";
+  type: "banner" | "products" | "categories" | "content" | "middle_banner" | "double_banner";
   count?: number; // For products
   // Banner specific
   imageUrl?: string;
@@ -39,88 +43,369 @@ interface Section {
   subtitle?: string;
   buttonText?: string;
   buttonLink?: string;
-  alignment?: "left" | "center" | "right";
+  alignment?: string;
   // Product Grid specific
   source?: "all" | "category" | "manual";
   selectedCategory?: string;
+  selectedSubcategory?: string;
   selectedProducts?: string[]; // Array of product IDs
+  description?: string; // Product Grid section description
+  display_order?: number;
 }
 
 const initialSections: Section[] = [
-  { id: 1, name: "Hero Banner", active: true, type: "banner" },
-  { id: 2, name: "New Arrivals", active: true, type: "products", count: 8, source: "all" },
-  { id: 3, name: "Category Grid", active: true, type: "categories" },
-  { id: 4, name: "Flash Sale", active: true, type: "products", count: 4, source: "category", selectedCategory: "Flash Sale" },
-  { id: 5, name: "On Sale", active: false, type: "products", count: 4, source: "all" },
-  { id: 6, name: "Testimonials", active: true, type: "content" },
-  { id: 7, name: "Blog Posts", active: false, type: "content" },
-  { id: 8, name: "Newsletter Banner", active: true, type: "banner" },
+  { id: "1", name: "Hero Banner", active: true, type: "banner" },
+  { id: "2", name: "New Arrivals", active: true, type: "products", count: 8, source: "all" },
+  { id: "3", name: "Category Grid", active: true, type: "categories" },
+  { id: "4", name: "Flash Sale", active: true, type: "products", count: 4, source: "category", selectedCategory: "Flash Sale" },
+  { id: "5", name: "On Sale", active: false, type: "products", count: 4, source: "all" },
+  { id: "6", name: "Testimonials", active: true, type: "content" },
+  { id: "7", name: "Blog Posts", active: false, type: "content" },
+  { id: "8", name: "Newsletter Banner", active: true, type: "banner" },
 ];
 
 export default function HomepageBuilderPage() {
-  const [sections, setSections] = useState<Section[]>(initialSections);
+  const [sections, setSections] = useState<Section[]>([]);
   const [editingSection, setEditingSection] = useState<Section | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [activeBannerTab, setActiveBannerTab] = useState<'left' | 'right'>('left');
   const [productSearch, setProductSearch] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([]);
+  const [dbSubcategories, setDbSubcategories] = useState<any[]>([]);
+  const [dbProducts, setDbProducts] = useState<Product[]>([]);
+  const { storeName } = useStoreSettings();
 
-  const handleToggleSection = (id: number) => {
+  useEffect(() => {
+    fetchSections();
+    fetchCategories();
+    fetchSubcategories();
+    fetchProducts();
+  }, []);
+
+  const fetchSubcategories = async () => {
+    const { data } = await supabase.from('subcategories').select('*').order('display_order');
+    if (data) setDbSubcategories(data);
+  };
+
+  const fetchProducts = async () => {
+    const { data } = await supabase.from('products').select('*');
+    if (data) setDbProducts(data as Product[]);
+  };
+
+  const fetchCategories = async () => {
+    const { data } = await supabase.from('categories').select('*').order('display_order');
+    if (data) {
+      setAvailableCategories(data);
+    }
+  };
+
+  const fetchSections = async () => {
+    setIsLoading(true);
+    try {
+      // Fetch sections, banners and grids separately to avoid join issues with schema cache
+      const [sectionsRes, bannersRes, gridsRes] = await Promise.all([
+        supabase.from('homepage_sections').select('*').order('display_order', { ascending: true }),
+        supabase.from('promo_banners').select('*'),
+        supabase.from('product_grids').select('*')
+      ]);
+
+      if (sectionsRes.error) throw sectionsRes.error;
+
+      const data = sectionsRes.data || [];
+      const banners = bannersRes.data || [];
+      const grids = gridsRes.data || [];
+
+      const formattedSections: Section[] = data.map((row: any) => {
+        const banner = banners.find(b => b.section_id === row.id);
+        const grid = grids.find(g => g.section_id === row.id);
+
+        return {
+          id: row.id,
+          name: row.name,
+          active: row.active,
+          type: row.type,
+          ...(banner ? {
+            imageUrl: banner.image_url,
+            title: banner.title,
+            subtitle: banner.subtitle,
+            buttonText: banner.button_text,
+            buttonLink: banner.button_link,
+            alignment: banner.alignment,
+          } : {}),
+          // All product grid types load from product_grids table
+          ...(grid ? {
+            source: grid.source,
+            selectedCategory: grid.selected_category,
+            selectedSubcategory: grid.selected_subcategory,
+            selectedProducts: grid.selected_products,
+            description: grid.description,
+            count: grid.item_count,
+          } : {})
+        };
+      });
+      setSections(formattedSections);
+    } catch (error) {
+      console.error("Error fetching homepage layout:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetToDefault = () => {
+    if (confirm("This will replace your current layout with the default template. Are you sure?")) {
+      const resetSections = initialSections.map(s => ({
+        ...s,
+        id: crypto.randomUUID()
+      }));
+      setSections(resetSections);
+    }
+  };
+
+  const handleSaveLayout = async () => {
+    setIsSaving(true);
+    
+    // Only update the display_order of existing sections
+    const orderUpdates = sections.map((section, index) => ({
+      id: section.id,
+      name: section.name,
+      active: section.active,
+      type: section.type,
+      display_order: index
+    }));
+
+    const { error } = await supabase.from('homepage_sections').upsert(orderUpdates);
+    
+    if (error) {
+      console.error("Error saving layout order:", error);
+      alert("Failed to save layout order.");
+    } else {
+      await fetchSections();
+    }
+    
+    setIsSaving(false);
+  };
+
+  const handleToggleSection = (id: string) => {
     setSections(sections.map(s => s.id === id ? { ...s, active: !s.active } : s));
+  };
+
+  const handleDeleteSection = (id: string) => {
+    setSectionToDelete(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!sectionToDelete) return;
+    
+    // Check if it's a UUID (stored in DB) or a temporary ID
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sectionToDelete);
+    
+    if (isUUID) {
+      setIsSaving(true);
+      // Manually delete from child tables first as a fallback for missing CASCADE
+      await Promise.all([
+        supabase.from('promo_banners').delete().eq('section_id', sectionToDelete),
+        supabase.from('product_grids').delete().eq('section_id', sectionToDelete)
+      ]);
+      
+      // Finally delete the main section
+      await supabase.from('homepage_sections').delete().eq('id', sectionToDelete);
+      setIsSaving(false);
+    }
+    
+    setSections(sections.filter(s => s.id !== sectionToDelete));
+    setSectionToDelete(null);
   };
 
   const handleEditClick = (section: Section) => {
     setEditingSection({ ...section });
+    setActiveBannerTab('left');
     setIsModalOpen(true);
   };
 
-  const handleUpdateSection = () => {
+  const handleUpdateSection = async () => {
     if (editingSection) {
-      setSections(sections.map(s => s.id === editingSection.id ? editingSection : s));
-      setIsModalOpen(false);
-      setEditingSection(null);
+      setIsSaving(true);
+      try {
+        // 1. Prepare base section
+        const sectionToSave = {
+          id: editingSection.id,
+          name: editingSection.name,
+          active: editingSection.active,
+          type: editingSection.type,
+          display_order: sections.findIndex(s => s.id === editingSection.id) === -1
+            ? sections.length
+            : sections.find(s => s.id === editingSection.id)?.display_order || 0
+        };
+
+        // 2. Upsert base section into homepage_sections
+        const { error: sectionError } = await supabase.from('homepage_sections').upsert(sectionToSave);
+        if (sectionError) throw new Error('homepage_sections upsert failed: ' + sectionError.message);
+
+        // 3. Save specific data per type
+        if (editingSection.type === 'banner' || editingSection.type === 'middle_banner' || editingSection.type === 'double_banner') {
+          const { error: bannerError } = await supabase.from('promo_banners').upsert({
+            section_id: editingSection.id,
+            image_url: editingSection.imageUrl,
+            title: editingSection.title,
+            subtitle: editingSection.subtitle,
+            button_text: editingSection.buttonText,
+            button_link: editingSection.buttonLink,
+            alignment: editingSection.alignment
+          }, { onConflict: 'section_id' });
+          if (bannerError) throw new Error('promo_banners upsert failed: ' + bannerError.message);
+
+        } else if (editingSection.type === 'products') {
+          // Delete existing product_grids row first, then insert fresh (avoids onConflict issues)
+          await supabase.from('product_grids').delete().eq('section_id', editingSection.id);
+
+          const { error: gridError } = await supabase.from('product_grids').insert({
+            section_id: editingSection.id,
+            source: editingSection.source,
+            selected_category: editingSection.selectedCategory || null,
+            selected_subcategory: editingSection.selectedSubcategory || null,
+            description: editingSection.description || null,
+            selected_products: editingSection.selectedProducts || null,
+            item_count: editingSection.count || null
+          });
+          if (gridError) throw new Error('product_grids insert failed: ' + gridError.message);
+        }
+
+        await fetchSections();
+        setIsModalOpen(false);
+        setEditingSection(null);
+      } catch (err: any) {
+        console.error('Error saving section:', err);
+        alert('Error saving section: ' + (err?.message || String(err)));
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
-  const handleAddSection = (type: "banner" | "products") => {
-    const newId = Math.max(...sections.map(s => s.id)) + 1;
+  const handleAddSection = (type: "banner" | "products" | "middle_banner" | "double_banner") => {
+    const newId = crypto.randomUUID();
     const newSection: Section = type === "banner" 
       ? { 
           id: newId, 
-          name: "New Banner", 
+          name: "Promo Banner", 
           active: true, 
           type: "banner",
-          title: "Elevate Your Style",
-          subtitle: "Discover our latest collection",
-          buttonText: "Shop Now",
+          title: "",
+          subtitle: "",
+          buttonText: "",
+          buttonLink: "",
           alignment: "center",
-          imageUrl: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80"
+          imageUrl: undefined
+        }
+      : type === "middle_banner"
+      ? {
+          id: newId,
+          name: "Middle Banner",
+          active: true,
+          type: "middle_banner",
+          title: "FLASH SALE — UP TO 70% OFF",
+          subtitle: "Limited time. Limited stock. Act fast.",
+          buttonText: "SHOP FLASH SALE",
+          buttonLink: "/products",
+          alignment: "left",
+          imageUrl: "/images/middle_banner_default.png"
+        }
+      : type === "double_banner"
+      ? {
+          id: newId,
+          name: "Double Banner",
+          active: true,
+          type: "double_banner",
+          title: "Summer Sale Up to 50% Off | Autumn Collection 2026",
+          subtitle: "END OF SEASON | NEW ARRIVALS",
+          buttonText: "SHOP NOW | DISCOVER",
+          buttonLink: "/products | /products",
+          alignment: "left | left",
+          imageUrl: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=450&fit=crop | https://images.unsplash.com/photo-1445205170230-053b83016050?w=800&h=450&fit=crop"
         }
       : { 
           id: newId, 
-          name: "New Product Grid", 
+          name: "Product Grid", 
           active: true, 
           type: "products", 
           count: 4,
           source: "all"
         };
     
-    setSections([...sections, newSection]);
     setIsAddModalOpen(false);
-    // Automatically open edit modal for the new section
     setEditingSection(newSection);
     setIsModalOpen(true);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, side?: 'left' | 'right') => {
     const file = e.target.files?.[0];
     if (file && editingSection) {
+      let currentUrls = (editingSection.imageUrl || "").split(" | ");
+      if (editingSection.type === "double_banner" && currentUrls.length < 2) {
+        currentUrls = ["", ""];
+      }
+
+      // Local preview
       const reader = new FileReader();
       reader.onloadend = () => {
-        setEditingSection({ ...editingSection, imageUrl: reader.result as string });
+        if (editingSection.type === "double_banner" && side) {
+          const idx = side === "left" ? 0 : 1;
+          const newUrls = [...currentUrls];
+          newUrls[idx] = reader.result as string;
+          setEditingSection({ ...editingSection, imageUrl: newUrls.join(" | ") });
+        } else {
+          setEditingSection({ ...editingSection, imageUrl: reader.result as string });
+        }
       };
       reader.readAsDataURL(file);
+
+      // Supabase upload
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('banners')
+        .upload(filePath, file);
+
+      if (error) {
+        alert("Image upload failed! Please make sure the 'banners' bucket is created in Supabase. Reverting image.");
+        // Revert to original or remove base64 so save doesn't crash
+        if (editingSection.type === "double_banner" && side) {
+          const idx = side === "left" ? 0 : 1;
+          const newUrls = [...currentUrls];
+          newUrls[idx] = "";
+          setEditingSection(prev => prev ? { ...prev, imageUrl: newUrls.join(" | ") } : prev);
+        } else {
+          setEditingSection(prev => prev ? { ...prev, imageUrl: undefined } : prev);
+        }
+        return;
+      }
+
+      if (data) {
+        const { data: publicUrlData } = supabase.storage
+          .from('banners')
+          .getPublicUrl(filePath);
+        
+        if (editingSection.type === "double_banner" && side) {
+          const idx = side === "left" ? 0 : 1;
+          const newUrls = [...currentUrls];
+          newUrls[idx] = publicUrlData.publicUrl;
+          setEditingSection(prev => prev ? { ...prev, imageUrl: newUrls.join(" | ") } : prev);
+        } else {
+          setEditingSection(prev => prev ? { ...prev, imageUrl: publicUrlData.publicUrl } : prev);
+        }
+      }
     }
   };
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-text-muted">Loading Layout...</div>;
+  }
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
@@ -129,9 +414,13 @@ export default function HomepageBuilderPage() {
            <h2 className="text-2xl font-bold text-text-primary">Homepage Layout Builder</h2>
            <p className="text-sm text-text-muted mt-1">Drag sections to reorder. Toggle to show or hide on storefront.</p>
         </div>
-        <button className="btn-primary">
-          <Save className="w-4 h-4" />
-          Save Layout
+        <button className="btn-primary" onClick={handleSaveLayout} disabled={isSaving || isLoading}>
+          {isSaving ? (
+             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          {isSaving ? "Saving..." : "Save Layout"}
         </button>
       </div>
 
@@ -152,6 +441,7 @@ export default function HomepageBuilderPage() {
                    section={section} 
                    onToggle={() => handleToggleSection(section.id)}
                    onEdit={() => handleEditClick(section)}
+                   onDelete={() => handleDeleteSection(section.id)}
                  />
                ))}
              </Reorder.Group>
@@ -185,7 +475,7 @@ export default function HomepageBuilderPage() {
                  <div className="h-full overflow-y-auto scrollbar-hide p-3 pt-8 space-y-4">
                     {/* Header */}
                     <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                       <span className="text-xs font-bold tracking-tighter">LUMIÈRE</span>
+                       <span className="text-xs font-bold tracking-tighter">{storeName}</span>
                        <div className="flex gap-2">
                           <div className="w-4 h-4 rounded-full bg-gray-200"></div>
                           <div className="w-4 h-4 rounded-full bg-gray-200"></div>
@@ -218,14 +508,86 @@ export default function HomepageBuilderPage() {
                                   )}
                                </div>
                             </div>
-                         ) : section.type === "products" ? (
+                         ) : section.type === "middle_banner" ? (
+                            <div className="w-full aspect-[16/9] relative rounded-lg overflow-hidden bg-black flex group border border-neutral-900 shadow-lg">
+                               <div className={cn(
+                                 "w-[55%] z-10 p-2.5 flex flex-col justify-center bg-black/90",
+                                 section.alignment === "center" ? "items-center text-center" : 
+                                 section.alignment === "right" ? "items-end text-right" : "items-start text-left"
+                               )}>
+                                  {section.title && <h4 className="text-[9px] font-black text-white uppercase tracking-tight leading-none mb-1 bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">{section.title}</h4>}
+                                  {section.subtitle && <p className="text-[5.5px] text-neutral-400 mb-2 leading-relaxed">{section.subtitle}</p>}
+                                  {section.buttonText && (
+                                    <div className="px-2 py-1 border border-neutral-400 text-white text-[4.5px] font-bold tracking-wider rounded uppercase bg-transparent">
+                                      {section.buttonText}
+                                    </div>
+                                  )}
+                               </div>
+                               <div className="w-[45%] h-full relative overflow-hidden">
+                                  {section.imageUrl ? (
+                                    <img src={section.imageUrl} alt={section.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                  <div className="w-full h-full bg-neutral-900 flex items-center justify-center">
+                                       <span className="text-[6px] font-bold text-neutral-600 uppercase">Image</span>
+                                    </div>
+                                  )}
+                                  <div className="absolute inset-0 bg-gradient-to-r from-black to-transparent"></div>
+                                </div>
+                            </div>
+                          ) : section.type === "double_banner" ? (
+                             <div className="w-full flex flex-col gap-2">
+                               {(() => {
+                                 const titles = (section.title || "").split(" | ");
+                                 const subtitles = (section.subtitle || "").split(" | ");
+                                 const buttons = (section.buttonText || "").split(" | ");
+                                 const images = (section.imageUrl || "").split(" | ");
+                                 
+                                 const leftTitle = titles[0] || "Summer Sale";
+                                 const leftSubtitle = subtitles[0] || "END OF SEASON";
+                                 const leftButton = buttons[0] || "SHOP NOW";
+                                 const leftImage = images[0] || "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=450&fit=crop";
+
+                                 const rightTitle = titles[1] || "Autumn Collection";
+                                 const rightSubtitle = subtitles[1] || "NEW ARRIVALS";
+                                 const rightButton = buttons[1] || "DISCOVER";
+                                 const rightImage = images[1] || "https://images.unsplash.com/photo-1445205170230-053b83016050?w=800&h=450&fit=crop";
+
+                                 return (
+                                   <div className="grid grid-cols-2 gap-2">
+                                     {/* Left Banner */}
+                                     <div className="aspect-[4/5] relative rounded-lg overflow-hidden group border border-gray-100 shadow-sm animate-fade-in">
+                                       <img src={leftImage} alt={leftTitle} className="w-full h-full object-cover" />
+                                       <div className="absolute inset-0 bg-black/35 p-2 flex flex-col justify-center items-start text-left">
+                                         <span className="text-[5px] tracking-widest text-white/90 mb-0.5 uppercase">{leftSubtitle}</span>
+                                         <h4 className="text-[8px] font-bold text-white leading-tight mb-1.5">{leftTitle}</h4>
+                                         <div className="px-1.5 py-0.5 border border-white/60 text-white text-[4px] font-bold tracking-wider rounded uppercase bg-transparent">
+                                           {leftButton}
+                                         </div>
+                                       </div>
+                                     </div>
+                                     {/* Right Banner */}
+                                     <div className="aspect-[4/5] relative rounded-lg overflow-hidden group border border-gray-100 shadow-sm animate-fade-in">
+                                       <img src={rightImage} alt={rightTitle} className="w-full h-full object-cover" />
+                                       <div className="absolute inset-0 bg-black/35 p-2 flex flex-col justify-center items-start text-left">
+                                         <span className="text-[5px] tracking-widest text-white/90 mb-0.5 uppercase">{rightSubtitle}</span>
+                                         <h4 className="text-[8px] font-bold text-white leading-tight mb-1.5">{rightTitle}</h4>
+                                         <div className="px-1.5 py-0.5 border border-white/60 text-white text-[4px] font-bold tracking-wider rounded uppercase bg-transparent">
+                                           {rightButton}
+                                         </div>
+                                       </div>
+                                     </div>
+                                   </div>
+                                 );
+                               })()}
+                             </div>
+                          ) : section.type === "products" ? (
                             <div className="space-y-2">
                                <div className="flex justify-between items-end">
                                   <div className="flex flex-col">
                                     <span className="text-[10px] font-bold">{section.name}</span>
                                     <span className="text-[6px] text-text-muted font-bold uppercase tracking-wider">
                                       {section.source === "all" ? "All Products" : 
-                                       section.source === "category" ? `Category: ${section.selectedCategory}` : 
+                                       section.source === "category" ? `Category: ${section.selectedCategory}${section.selectedSubcategory ? ` > ${section.selectedSubcategory}` : ""}` : 
                                        `Selected: ${section.selectedProducts?.length || 0} Products`}
                                     </span>
                                   </div>
@@ -251,7 +613,10 @@ export default function HomepageBuilderPage() {
                     <Eye className="w-4 h-4" />
                     Full Screen Preview
                  </button>
-                 <button className="flex items-center gap-2 text-xs font-bold text-text-muted hover:text-text-primary transition-colors">
+                 <button 
+                    onClick={handleResetToDefault}
+                    className="flex items-center gap-2 text-xs font-bold text-text-muted hover:text-text-primary transition-colors"
+                 >
                     <Layout className="w-4 h-4" />
                     Reset to Default
                  </button>
@@ -292,106 +657,241 @@ export default function HomepageBuilderPage() {
                 />
               </div>
 
-              {editingSection.type === "banner" && (
+              {editingSection.type === "products" && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Section Description</label>
+                  <textarea
+                    rows={2}
+                    value={editingSection.description || ""}
+                    onChange={(e) => setEditingSection({ ...editingSection, description: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all resize-none"
+                    placeholder="e.g. Explore our latest arrivals and trending styles"
+                  />
+                </div>
+              )}
+
+              {(editingSection.type === "banner" || editingSection.type === "middle_banner" || editingSection.type === "double_banner") && (
                 <div className="space-y-6 pt-4 border-t border-gray-100">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Banner Image</label>
-                    <div className="flex items-center gap-6 p-4 bg-gray-50 border border-gray-100 rounded-2xl group hover:border-brand-gold/30 transition-all">
-                       <div className="w-24 h-24 rounded-xl overflow-hidden bg-white flex-shrink-0 border border-gray-100 shadow-sm">
-                          {editingSection.imageUrl ? (
-                            <img src={editingSection.imageUrl} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-text-muted">
-                               <ImageIcon className="w-8 h-8 opacity-20" />
-                            </div>
-                          )}
-                       </div>
-                       <div className="flex-1 space-y-3">
-                          <div>
-                             <p className="text-sm font-bold text-text-primary">Upload Local Image</p>
-                             <p className="text-[10px] text-text-muted mt-0.5">JPG, PNG or WebP. Max 2MB recommended.</p>
-                          </div>
-                          <label className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-text-primary hover:bg-gray-50 cursor-pointer transition-colors shadow-sm">
-                             <Upload className="w-3.5 h-3.5 text-brand-gold" />
-                             Select File
-                             <input 
-                               type="file" 
-                               className="hidden" 
-                               accept="image/*"
-                               onChange={handleImageUpload}
-                             />
+                  {editingSection.type === "double_banner" && (
+                    <div className="flex border-b border-gray-200 mb-6 bg-gray-50/50 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setActiveBannerTab('left')}
+                        className={cn(
+                          "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                          activeBannerTab === 'left' ? "bg-white text-brand-gold shadow-sm" : "text-text-muted hover:text-text-primary"
+                        )}
+                      >
+                        Left Banner Card
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveBannerTab('right')}
+                        className={cn(
+                          "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                          activeBannerTab === 'right' ? "bg-white text-brand-gold shadow-sm" : "text-text-muted hover:text-text-primary"
+                        )}
+                      >
+                        Right Banner Card
+                      </button>
+                    </div>
+                  )}
+
+                  {(() => {
+                    const isDouble = editingSection.type === "double_banner";
+                    const titles = (editingSection.title || "").split(" | ");
+                    const subtitles = (editingSection.subtitle || "").split(" | ");
+                    const buttons = (editingSection.buttonText || "").split(" | ");
+                    const links = (editingSection.buttonLink || "").split(" | ");
+                    const alignments = (editingSection.alignment || "").split(" | ");
+                    const images = (editingSection.imageUrl || "").split(" | ");
+
+                    const tabIndex = activeBannerTab === 'left' ? 0 : 1;
+
+                    const updateField = (field: 'title' | 'subtitle' | 'buttonText' | 'buttonLink' | 'alignment' | 'imageUrl', val: string) => {
+                      if (isDouble) {
+                        const idx = tabIndex;
+                        if (field === 'title') {
+                          const arr = [...titles];
+                          while (arr.length < 2) arr.push("");
+                          arr[idx] = val;
+                          setEditingSection({ ...editingSection, title: arr.join(" | ") });
+                        } else if (field === 'subtitle') {
+                          const arr = [...subtitles];
+                          while (arr.length < 2) arr.push("");
+                          arr[idx] = val;
+                          setEditingSection({ ...editingSection, subtitle: arr.join(" | ") });
+                        } else if (field === 'buttonText') {
+                          const arr = [...buttons];
+                          while (arr.length < 2) arr.push("");
+                          arr[idx] = val;
+                          setEditingSection({ ...editingSection, buttonText: arr.join(" | ") });
+                        } else if (field === 'buttonLink') {
+                          const arr = [...links];
+                          while (arr.length < 2) arr.push("");
+                          arr[idx] = val;
+                          setEditingSection({ ...editingSection, buttonLink: arr.join(" | ") });
+                        } else if (field === 'alignment') {
+                          const arr = [...alignments];
+                          while (arr.length < 2) arr.push("left");
+                          arr[idx] = val;
+                          setEditingSection({ ...editingSection, alignment: arr.join(" | ") as any });
+                        } else if (field === 'imageUrl') {
+                          const arr = [...images];
+                          while (arr.length < 2) arr.push("");
+                          arr[idx] = val;
+                          setEditingSection({ ...editingSection, imageUrl: arr.join(" | ") });
+                        }
+                      }
+                    };
+
+                    const currentTitle = isDouble ? (titles[tabIndex] || "") : (editingSection.title || "");
+                    const currentSubtitle = isDouble ? (subtitles[tabIndex] || "") : (editingSection.subtitle || "");
+                    const currentButtonText = isDouble ? (buttons[tabIndex] || "") : (editingSection.buttonText || "");
+                    const currentButtonLink = isDouble ? (links[tabIndex] || "") : (editingSection.buttonLink || "");
+                    const currentAlignment = isDouble ? (alignments[tabIndex] || "left") : (editingSection.alignment || "center");
+                    const currentImageUrl = isDouble ? (images[tabIndex] || "") : (editingSection.imageUrl || "");
+
+                    return (
+                      <div className="space-y-6">
+                        {/* Banner Image */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+                            {isDouble ? `${activeBannerTab === 'left' ? 'Left' : 'Right'} Banner Image` : 'Banner Image'}
                           </label>
-                       </div>
-                    </div>
-                  </div>
+                          <div className="flex items-center gap-6 p-4 bg-gray-50 border border-gray-100 rounded-2xl group hover:border-brand-gold/30 transition-all">
+                             <div className="w-24 h-24 rounded-xl overflow-hidden bg-white flex-shrink-0 border border-gray-100 shadow-sm">
+                                {currentImageUrl ? (
+                                  <img src={currentImageUrl} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-text-muted">
+                                     <ImageIcon className="w-8 h-8 opacity-20" />
+                                  </div>
+                                )}
+                             </div>
+                             <div className="flex-1 space-y-3">
+                                <div>
+                                   <p className="text-sm font-bold text-text-primary">Upload Local Image</p>
+                                   <p className="text-[10px] text-text-muted mt-0.5">JPG, PNG or WebP. Max 2MB recommended.</p>
+                                </div>
+                                <label className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-text-primary hover:bg-gray-50 cursor-pointer transition-colors shadow-sm">
+                                   <Upload className="w-3.5 h-3.5 text-brand-gold" />
+                                   Select File
+                                   <input 
+                                     type="file" 
+                                     className="hidden" 
+                                     accept="image/*"
+                                     onChange={(e) => handleImageUpload(e, isDouble ? activeBannerTab : undefined)}
+                                   />
+                                </label>
+                             </div>
+                          </div>
+                        </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Title</label>
-                      <input 
-                        type="text" 
-                        value={editingSection.title}
-                        onChange={(e) => setEditingSection({ ...editingSection, title: e.target.value })}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                        placeholder="e.g. New Arrivals"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Subtitle</label>
-                      <input 
-                        type="text" 
-                        value={editingSection.subtitle}
-                        onChange={(e) => setEditingSection({ ...editingSection, subtitle: e.target.value })}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                        placeholder="e.g. Explore the collection"
-                      />
-                    </div>
-                  </div>
+                        {/* Title & Subtitle */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Title</label>
+                            <input 
+                              type="text" 
+                              value={currentTitle}
+                              onChange={(e) => {
+                                if (isDouble) {
+                                  updateField('title', e.target.value);
+                                } else {
+                                  setEditingSection({ ...editingSection, title: e.target.value });
+                                }
+                              }}
+                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                              placeholder="e.g. New Arrivals"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Subtitle</label>
+                            <input 
+                              type="text" 
+                              value={currentSubtitle}
+                              onChange={(e) => {
+                                if (isDouble) {
+                                  updateField('subtitle', e.target.value);
+                                } else {
+                                  setEditingSection({ ...editingSection, subtitle: e.target.value });
+                                }
+                              }}
+                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                              placeholder="e.g. Explore the collection"
+                            />
+                          </div>
+                        </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Text</label>
-                      <input 
-                        type="text" 
-                        value={editingSection.buttonText}
-                        onChange={(e) => setEditingSection({ ...editingSection, buttonText: e.target.value })}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                        placeholder="e.g. Shop Now"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Link</label>
-                      <input 
-                        type="text" 
-                        value={editingSection.buttonLink}
-                        onChange={(e) => setEditingSection({ ...editingSection, buttonLink: e.target.value })}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                        placeholder="e.g. /products/new"
-                      />
-                    </div>
-                  </div>
+                        {/* Button Text & Link */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Text</label>
+                            <input 
+                              type="text" 
+                              value={currentButtonText}
+                              onChange={(e) => {
+                                if (isDouble) {
+                                  updateField('buttonText', e.target.value);
+                                } else {
+                                  setEditingSection({ ...editingSection, buttonText: e.target.value });
+                                }
+                              }}
+                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                              placeholder="e.g. Shop Now"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Link</label>
+                            <input 
+                              type="text" 
+                              value={currentButtonLink}
+                              onChange={(e) => {
+                                if (isDouble) {
+                                  updateField('buttonLink', e.target.value);
+                                } else {
+                                  setEditingSection({ ...editingSection, buttonLink: e.target.value });
+                                }
+                              }}
+                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                              placeholder="e.g. /products/new"
+                            />
+                          </div>
+                        </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Text Alignment</label>
-                    <div className="flex gap-2">
-                       {[
-                         { id: "left", icon: AlignLeft },
-                         { id: "center", icon: AlignCenter },
-                         { id: "right", icon: AlignRight },
-                       ].map((align) => (
-                         <button
-                           key={align.id}
-                           onClick={() => setEditingSection({ ...editingSection, alignment: align.id as any })}
-                           className={cn(
-                             "flex-1 py-3 rounded-xl border flex items-center justify-center transition-all",
-                             editingSection.alignment === align.id ? "bg-brand-gold border-brand-gold text-white" : "bg-gray-50 border-transparent text-text-muted hover:bg-gray-100"
-                           )}
-                         >
-                           <align.icon className="w-5 h-5" />
-                         </button>
-                       ))}
-                    </div>
-                  </div>
+                        {/* Text Alignment */}
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Text Alignment</label>
+                          <div className="flex gap-2">
+                             {[
+                               { id: "left", icon: AlignLeft },
+                               { id: "center", icon: AlignCenter },
+                               { id: "right", icon: AlignRight },
+                             ].map((align) => (
+                               <button
+                                 key={align.id}
+                                 type="button"
+                                 onClick={() => {
+                                   if (isDouble) {
+                                     updateField('alignment', align.id);
+                                   } else {
+                                     setEditingSection({ ...editingSection, alignment: align.id as any });
+                                   }
+                                 }}
+                                 className={cn(
+                                   "flex-1 py-3 rounded-xl border flex items-center justify-center transition-all",
+                                   currentAlignment === align.id ? "bg-brand-gold border-brand-gold text-white" : "bg-gray-50 border-transparent text-text-muted hover:bg-gray-100"
+                                 )}
+                               >
+                                 <align.icon className="w-5 h-5" />
+                               </button>
+                             ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -410,7 +910,7 @@ export default function HomepageBuilderPage() {
                            onClick={() => setEditingSection({ 
                              ...editingSection, 
                              source: source.id as any,
-                             selectedCategory: source.id === "category" ? (editingSection.selectedCategory || initialMainCategories[0].name) : editingSection.selectedCategory,
+                             selectedCategory: editingSection.selectedCategory || "",
                              selectedProducts: source.id === "manual" ? (editingSection.selectedProducts || []) : editingSection.selectedProducts
                            })}
                            className={cn(
@@ -425,17 +925,46 @@ export default function HomepageBuilderPage() {
                   </div>
 
                   {editingSection.source === "category" && (
-                    <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
-                      <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Select Category</label>
-                      <select 
-                        value={editingSection.selectedCategory}
-                        onChange={(e) => setEditingSection({ ...editingSection, selectedCategory: e.target.value })}
-                        className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                      >
-                        {initialMainCategories.map(cat => (
-                          <option key={cat.id} value={cat.name}>{cat.name}</option>
-                        ))}
-                      </select>
+                    <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Select Main Category</label>
+                        <select 
+                          value={editingSection.selectedCategory || ""}
+                          onChange={(e) => setEditingSection({ 
+                            ...editingSection, 
+                            selectedCategory: e.target.value,
+                            selectedSubcategory: "" // Reset subcategory when main changes
+                          })}
+                          className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                        >
+                          <option value="">Select Category</option>
+                          {availableCategories.map(cat => (
+                            <option key={cat.id} value={cat.name}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {editingSection.selectedCategory && (
+                        <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
+                          <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Select Subcategory (Optional)</label>
+                          <select 
+                            value={editingSection.selectedSubcategory || ""}
+                            onChange={(e) => setEditingSection({ ...editingSection, selectedSubcategory: e.target.value })}
+                            className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                          >
+                            <option value="">All Subcategories</option>
+                            {dbSubcategories
+                              .filter(sub => {
+                                const parentCat = availableCategories.find(c => c.name === editingSection.selectedCategory);
+                                return sub.category_id === parentCat?.id;
+                              })
+                              .map(sub => (
+                                <option key={sub.id} value={sub.name}>{sub.name}</option>
+                              ))
+                            }
+                          </select>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -453,7 +982,7 @@ export default function HomepageBuilderPage() {
                         />
                       </div>
                       <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-50">
-                        {initialProducts
+                        {dbProducts
                           .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
                           .map(product => {
                             const isSelected = !!editingSection.selectedProducts?.includes(product.id);
@@ -491,11 +1020,13 @@ export default function HomepageBuilderPage() {
                     </div>
                   )}
 
+
+
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Items to Show</label>
                     <input 
                       type="number" 
-                      value={editingSection.count}
+                      value={editingSection.count || ""}
                       onChange={(e) => setEditingSection({ ...editingSection, count: parseInt(e.target.value) || 0 })}
                       className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
                     />
@@ -544,7 +1075,7 @@ export default function HomepageBuilderPage() {
             className="absolute inset-0 bg-brand-sidebar/40 backdrop-blur-sm"
             onClick={() => setIsAddModalOpen(false)}
           ></div>
-          <div className="w-full max-md bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="w-full max-w-xl bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
               <div>
                 <h3 className="text-lg font-bold text-text-primary">Add Custom Section</h3>
@@ -558,7 +1089,7 @@ export default function HomepageBuilderPage() {
               </button>
             </div>
 
-            <div className="p-8 grid grid-cols-2 gap-4">
+            <div className="p-8 grid grid-cols-2 md:grid-cols-4 gap-4">
               <button 
                 onClick={() => handleAddSection("banner")}
                 className="flex flex-col items-center justify-center gap-4 p-6 rounded-2xl border-2 border-gray-50 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group"
@@ -567,8 +1098,34 @@ export default function HomepageBuilderPage() {
                    <ImageIcon className="w-6 h-6" />
                 </div>
                 <div className="text-center">
-                   <p className="text-sm font-bold text-text-primary">Promo Banner</p>
-                   <p className="text-[10px] text-text-muted mt-0.5">Full-width display with text & CTAs</p>
+                   <p className="text-xs font-bold text-text-primary">Promo Banner</p>
+                   <p className="text-[9px] text-text-muted mt-0.5">Full-width display with CTAs</p>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => handleAddSection("middle_banner")}
+                className="flex flex-col items-center justify-center gap-4 p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                   <Layout className="w-6 h-6" />
+                </div>
+                <div className="text-center">
+                   <p className="text-xs font-bold text-text-primary">Middle Banner</p>
+                   <p className="text-[9px] text-text-muted mt-0.5">Split layout & ghost CTA</p>
+                </div>
+              </button>
+
+              <button 
+                onClick={() => handleAddSection("double_banner")}
+                className="flex flex-col items-center justify-center gap-4 p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                   <Columns className="w-6 h-6" />
+                </div>
+                <div className="text-center">
+                   <p className="text-xs font-bold text-text-primary">Double Banner</p>
+                   <p className="text-[9px] text-text-muted mt-0.5">2-Column split layout</p>
                 </div>
               </button>
 
@@ -580,9 +1137,50 @@ export default function HomepageBuilderPage() {
                    <LayoutGrid className="w-6 h-6" />
                 </div>
                 <div className="text-center">
-                   <p className="text-sm font-bold text-text-primary">Product Grid</p>
-                   <p className="text-[10px] text-text-muted mt-0.5">Dynamic showcase of your products</p>
+                   <p className="text-xs font-bold text-text-primary">Product Grid</p>
+                   <p className="text-[9px] text-text-muted mt-0.5">Dynamic showcase of products</p>
                 </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {sectionToDelete && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div 
+            className="absolute inset-0 bg-brand-sidebar/40 backdrop-blur-sm"
+            onClick={() => setSectionToDelete(null)}
+          ></div>
+          <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-500" />
+                Delete Section
+              </h3>
+              <button 
+                onClick={() => setSectionToDelete(null)}
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-text-muted"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-text-secondary">Are you sure you want to delete this section? This action cannot be undone.</p>
+            </div>
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-4">
+              <button 
+                onClick={() => setSectionToDelete(null)}
+                className="flex-1 px-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-text-muted hover:bg-gray-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="flex-[2] px-6 py-3 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 transition-all shadow-lg shadow-red-500/20"
+              >
+                Delete
               </button>
             </div>
           </div>
@@ -593,10 +1191,11 @@ export default function HomepageBuilderPage() {
 }
 
 // Sub-component for individual reorderable items
-function SectionItem({ section, onToggle, onEdit }: { 
+function SectionItem({ section, onToggle, onEdit, onDelete }: { 
   section: Section; 
   onToggle: () => void; 
   onEdit: () => void;
+  onDelete: () => void;
 }) {
   const controls = useDragControls();
 
@@ -658,12 +1257,20 @@ function SectionItem({ section, onToggle, onEdit }: {
             <span className="slider"></span>
           </label>
         </div>
-        <button 
-          onClick={onEdit}
-          className="p-2 text-text-muted hover:text-brand-gold transition-colors"
-        >
-          <Edit className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button 
+            onClick={onEdit}
+            className="p-2 text-text-muted hover:text-brand-gold transition-colors"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+          <button 
+            onClick={onDelete}
+            className="p-2 text-text-muted hover:text-red-500 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </Reorder.Item>
   );

@@ -1,89 +1,239 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Zap, 
   Clock, 
   Plus, 
   Search, 
   Trash2, 
-  ChevronRight,
-  TrendingUp,
   Percent,
   X
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { supabase } from "@/lib/supabase";
+import type { FlashSaleSettings, FlashSaleItem, Product } from "@/lib/types";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const initialSaleProducts = [
-  { id: 1, name: "Silk Evening Gown", price: 4200, salePrice: 2100, discount: 50, stock: 45, sold: 12, image: "https://images.unsplash.com/photo-1539008835657-9e8e9680c956?w=100&q=80" },
-  { id: 2, name: "Cashmere Sweater", price: 3500, salePrice: 2450, discount: 30, stock: 24, sold: 8, image: "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=100&q=80" },
-  { id: 3, name: "Gold Chain Necklace", price: 1200, salePrice: 840, discount: 30, stock: 12, sold: 10, image: "https://images.unsplash.com/photo-1535633302723-9993d57af2aa?w=100&q=80" },
-];
-
-const availableProductsPool = [
-  { id: 10, name: "Leather Jacket", price: 8500, image: "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=100&q=80" },
-  { id: 11, name: "Classic Denim", price: 2400, image: "https://images.unsplash.com/photo-1542272604-787c3835535d?w=100&q=80" },
-  { id: 12, name: "Woolen Scarf", price: 1200, image: "https://images.unsplash.com/photo-1520903920243-00d872a2d1c9?w=100&q=80" },
-  { id: 13, name: "Cotton T-Shirt", price: 800, image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=100&q=80" },
-  { id: 14, name: "Formal Shoes", price: 4500, image: "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=100&q=80" },
-];
-
 export default function FlashSalePage() {
-  const [active, setActive] = useState(true);
-  const [saleProducts, setSaleProducts] = useState(initialSaleProducts);
+  const [active, setActive] = useState(false);
+  const [saleProducts, setSaleProducts] = useState<FlashSaleItem[]>([]);
   const [isSelectOpen, setIsSelectOpen] = useState(false);
-  const [selectedPoolIds, setSelectedPoolIds] = useState<number[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
+  const [selectedPoolIds, setSelectedPoolIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   
   // Settings States
-  const [startDate, setStartDate] = useState("2023-10-30T00:00");
-  const [endDate, setEndDate] = useState("2023-10-31T00:00");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [defaultDiscount, setDefaultDiscount] = useState(30);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState(false);
+  
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleToggleSale = () => {
-    setActive(!active);
+  // Stats
+  const [revenue, setRevenue] = useState(0);
+  const [totalSold, setTotalSold] = useState(0);
+
+  // Timer State
+  const [timeLeft, setTimeLeft] = useState({
+    hours: "00",
+    minutes: "00",
+    seconds: "00"
+  });
+
+  const handleSaleExpiration = async () => {
+    // 1. Set settings to inactive in DB
+    await supabase.from('flash_sale_settings').update({ active: false }).eq('id', 1);
+    
+    // 2. Fetch all current item IDs to delete
+    const { data } = await supabase.from('flash_sale_items').select('id');
+    if (data && data.length > 0) {
+      const ids = data.map(item => item.id);
+      await supabase.from('flash_sale_items').delete().in('id', ids);
+    }
+    
+    // 3. Update local state
+    setActive(false);
+    setSaleProducts([]);
+    setRevenue(0);
+    setTotalSold(0);
+  };
+
+  useEffect(() => {
+    if (!active || !endDate) {
+      setTimeLeft({ hours: "00", minutes: "00", seconds: "00" });
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const end = new Date(endDate).getTime();
+      const distance = end - now;
+
+      if (distance < 0) {
+        setTimeLeft({ hours: "00", minutes: "00", seconds: "00" });
+        handleSaleExpiration();
+        return;
+      }
+
+      const totalHours = Math.floor(distance / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      setTimeLeft({
+        hours: totalHours.toString().padStart(2, '0'),
+        minutes: minutes.toString().padStart(2, '0'),
+        seconds: seconds.toString().padStart(2, '0')
+      });
+    };
+
+    updateTimer(); // Initial call
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [active, endDate]);
+
+  const fetchFlashSaleData = async (silent: boolean = false) => {
+    if (!silent) setIsLoading(true);
+    // Fetch Settings
+    const { data: settingsData } = await supabase
+      .from('flash_sale_settings')
+      .select('*')
+      .eq('id', 1)
+      .single();
+
+    if (settingsData) {
+      setActive(settingsData.active);
+      // Format dates for datetime-local input (YYYY-MM-DDThh:mm)
+      if (settingsData.start_date) {
+        setStartDate(new Date(settingsData.start_date).toISOString().slice(0, 16));
+      }
+      if (settingsData.end_date) {
+        setEndDate(new Date(settingsData.end_date).toISOString().slice(0, 16));
+      }
+      setDefaultDiscount(settingsData.default_discount || 30);
+
+      // Auto check expiration on load
+      if (settingsData.active && settingsData.end_date) {
+        const end = new Date(settingsData.end_date).getTime();
+        const now = new Date().getTime();
+        if (end < now) {
+          // Sale has expired, clean up items
+          await supabase.from('flash_sale_settings').update({ active: false }).eq('id', 1);
+          const { data: items } = await supabase.from('flash_sale_items').select('id');
+          if (items && items.length > 0) {
+            await supabase.from('flash_sale_items').delete().in('id', items.map(i => i.id));
+          }
+          setActive(false);
+          setSaleProducts([]);
+          setRevenue(0);
+          setTotalSold(0);
+          if (!silent) setIsLoading(false);
+          return;
+        }
+      }
+    }
+
+    // Fetch Items
+    const { data: itemsData } = await supabase
+      .from('flash_sale_items')
+      .select('*, products(name, image, price)');
+      
+    if (itemsData) {
+      setSaleProducts(itemsData);
+      
+      // Calculate Stats
+      let rev = 0;
+      let sold = 0;
+      itemsData.forEach(item => {
+        sold += item.sold;
+        rev += (item.sale_price * item.sold);
+      });
+      setRevenue(rev);
+      setTotalSold(sold);
+    }
+
+    if (!silent) setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchFlashSaleData();
+  }, []);
+
+  const fetchAvailableProducts = async () => {
+    const { data } = await supabase.from('products').select('*');
+    if (data) {
+      setAvailableProducts(data);
+    }
+  };
+
+  const handleOpenSelectModal = () => {
+    setSelectedPoolIds([]);
+    setSearchQuery("");
+    fetchAvailableProducts();
+    setIsSelectOpen(true);
+  };
+
+  const handleToggleSale = async () => {
+    const newActiveState = !active;
+    setActive(newActiveState);
+    await supabase.from('flash_sale_settings').update({ active: newActiveState }).eq('id', 1);
   };
 
   const handleUpdateSettings = async () => {
     setIsUpdating(true);
     setUpdateSuccess(false);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await supabase.from('flash_sale_settings').update({
+      start_date: new Date(startDate).toISOString(),
+      end_date: new Date(endDate).toISOString(),
+      default_discount: defaultDiscount
+    }).eq('id', 1);
     
     setIsUpdating(false);
     setUpdateSuccess(true);
     
-    // Reset success message after 3 seconds
     setTimeout(() => setUpdateSuccess(false), 3000);
   };
 
-  const handleAddProductsToSale = () => {
-    const productsToAdd = availableProductsPool
+  const handleAddProductsToSale = async () => {
+    const productsToAdd = availableProducts
       .filter(p => selectedPoolIds.includes(p.id))
-      .map(p => ({
-        ...p,
-        salePrice: p.price * 0.7, // Default 30% discount
-        discount: 30,
-        stock: 50,
-        sold: 0
-      }));
+      .map(p => {
+        const discountFactor = (100 - defaultDiscount) / 100;
+        return {
+          product_id: p.id,
+          sale_price: Math.round(p.price * discountFactor),
+          discount: defaultDiscount,
+          stock: p.stock > 0 ? p.stock : 50, // Default to 50 if out of stock, or handle as needed
+          sold: 0
+        };
+      });
 
-    setSaleProducts([...saleProducts, ...productsToAdd]);
+    if (productsToAdd.length > 0) {
+      await supabase.from('flash_sale_items').insert(productsToAdd);
+      await fetchFlashSaleData(true);
+    }
+
     setIsSelectOpen(false);
     setSelectedPoolIds([]);
   };
 
-  const removeProduct = (id: number) => {
+  const removeProduct = async (id: string) => {
+    await supabase.from('flash_sale_items').delete().eq('id', id);
     setSaleProducts(saleProducts.filter(p => p.id !== id));
+    await fetchFlashSaleData(true);
   };
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-text-muted">Loading Flash Sale Data...</div>;
+  }
 
   return (
     <div className="space-y-8 animate-fade-in pb-12">
@@ -124,9 +274,9 @@ export default function FlashSalePage() {
               <h3 className="text-[10px] font-bold text-white/40 tracking-widest uppercase mb-6">Time Remaining</h3>
               <div className="flex gap-4">
                  {[
-                   { label: "HRS", val: "08" },
-                   { label: "MIN", val: "42" },
-                   { label: "SEC", val: "15" },
+                   { label: "HRS", val: timeLeft.hours },
+                   { label: "MIN", val: timeLeft.minutes },
+                   { label: "SEC", val: timeLeft.seconds },
                  ].map((t) => (
                    <div key={t.label} className="flex flex-col items-center gap-1">
                       <div className="w-16 h-16 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-3xl font-mono font-bold border border-white/10">
@@ -139,11 +289,11 @@ export default function FlashSalePage() {
               <div className="mt-8 flex items-center gap-4 py-4 border-t border-white/10">
                  <div className="flex-1">
                     <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest">Revenue</p>
-                    <p className="text-xl font-bold mt-1">Rs.28,420</p>
+                    <p className="text-xl font-bold mt-1">Rs.{revenue.toLocaleString()}</p>
                  </div>
                  <div className="flex-1">
                     <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest">Total Sold</p>
-                    <p className="text-xl font-bold mt-1">32 Items</p>
+                    <p className="text-xl font-bold mt-1">{totalSold} Items</p>
                  </div>
               </div>
            </div>
@@ -218,7 +368,7 @@ export default function FlashSalePage() {
                     <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-1">Products participating in current sale</p>
                  </div>
                   <button 
-                    onClick={() => setIsSelectOpen(true)}
+                    onClick={handleOpenSelectModal}
                     className="btn-primary py-2 px-4 text-xs"
                   >
                     <Plus className="w-4 h-4" />
@@ -239,18 +389,22 @@ export default function FlashSalePage() {
                        </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-gray-50">
-                       {saleProducts.map((p) => (
+                       {saleProducts.map((p) => {
+                         const productDetails = p.products;
+                         if (!productDetails) return null;
+                         
+                         return (
                          <tr key={p.id} className="hover:bg-brand-gold-light transition-colors group">
                             <td className="px-6 py-4">
                                <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 border border-gray-100 flex-shrink-0">
-                                     <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                                     <img src={productDetails.image} alt={productDetails.name} className="w-full h-full object-cover" />
                                   </div>
-                                  <span className="font-bold text-text-primary truncate max-w-[140px]">{p.name}</span>
+                                  <span className="font-bold text-text-primary truncate max-w-[140px]">{productDetails.name}</span>
                                </div>
                             </td>
-                            <td className="px-6 py-4 font-bold text-text-muted line-through">Rs.{p.price}</td>
-                            <td className="px-6 py-4 font-bold text-text-primary">Rs.{p.salePrice}</td>
+                            <td className="px-6 py-4 font-bold text-text-muted line-through">Rs.{productDetails.price}</td>
+                            <td className="px-6 py-4 font-bold text-text-primary">Rs.{p.sale_price}</td>
                             <td className="px-6 py-4">
                                <span className="px-2 py-0.5 bg-rose-50 text-rose-600 text-[10px] font-bold rounded">-{p.discount}%</span>
                             </td>
@@ -274,7 +428,14 @@ export default function FlashSalePage() {
                                </button>
                             </td>
                          </tr>
-                       ))}
+                       )})}
+                       {saleProducts.length === 0 && (
+                         <tr>
+                           <td colSpan={6} className="px-6 py-8 text-center text-sm text-text-muted">
+                             No products added to the flash sale yet.
+                           </td>
+                         </tr>
+                       )}
                     </tbody>
                  </table>
               </div>
@@ -309,7 +470,7 @@ export default function FlashSalePage() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
                   <input 
                     type="text" 
-                    placeholder="Search products by name or SKU..."
+                    placeholder="Search products by name..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all"
@@ -318,23 +479,24 @@ export default function FlashSalePage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
-               {availableProductsPool
+               {availableProducts
                  .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
                  .map((p) => {
                    const isSelected = selectedPoolIds.includes(p.id);
-                   const isAlreadyInSale = saleProducts.some(sp => sp.id === p.id);
+                   const isAlreadyInSale = saleProducts.some(sp => sp.product_id === p.id);
 
                    return (
                      <div 
                         key={p.id}
-                        onClick={() => !isAlreadyInSale && (
+                        onClick={() => {
+                          if (isAlreadyInSale) return;
                           isSelected 
                             ? setSelectedPoolIds(selectedPoolIds.filter(id => id !== p.id))
-                            : setSelectedPoolIds([...selectedPoolIds, p.id])
-                        )}
+                            : setSelectedPoolIds([...selectedPoolIds, p.id]);
+                        }}
                         className={cn(
                           "flex items-center gap-4 p-4 rounded-2xl border transition-all cursor-pointer group",
-                          isAlreadyInSale ? "opacity-50 cursor-not-allowed bg-gray-50 border-transparent" :
+                          isAlreadyInSale ? "bg-gray-50/50 border-transparent" :
                           isSelected ? "bg-brand-gold-light border-brand-gold/20" : "hover:bg-gray-50 border-transparent"
                         )}
                      >
@@ -346,7 +508,22 @@ export default function FlashSalePage() {
                            <p className="text-xs text-text-muted font-bold">Base Price: Rs.{p.price}</p>
                         </div>
                         {isAlreadyInSale ? (
-                          <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded">In Sale</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded">In Sale</span>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const item = saleProducts.find(sp => sp.product_id === p.id);
+                                if (item) {
+                                  await removeProduct(item.id);
+                                }
+                              }}
+                              className="p-2 text-text-muted hover:text-danger hover:bg-white rounded-lg transition-all shadow-sm border border-gray-100 hover:border-red-200 bg-white"
+                              title="Remove from Flash Sale"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         ) : (
                           <div className={cn(
                             "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
@@ -358,6 +535,9 @@ export default function FlashSalePage() {
                      </div>
                    );
                  })}
+                 {availableProducts.length === 0 && (
+                   <div className="p-8 text-center text-sm text-text-muted">No products found in the database.</div>
+                 )}
             </div>
 
             <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-4">

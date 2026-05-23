@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { PRESET_COLORS } from "../../add/page";
+import type { Product } from "@/lib/types";
+import { Loader2 } from "lucide-react";
 import { 
   ChevronLeft, 
   Upload, 
@@ -14,12 +18,12 @@ import {
   DollarSign,
   Tag,
   ChevronDown,
-  Palette,
-  Layers
+  Layers,
+  Search
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { initialMainCategories, initialSubcategoriesData } from "@/lib/data";
+import type { Category, Subcategory } from "@/lib/types";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -35,34 +39,181 @@ export default function EditProductPage() {
   const [basePrice, setBasePrice] = useState(120);
   const [oldPrice, setOldPrice] = useState(150);
   const [totalStock, setTotalStock] = useState(45);
-  const [images, setImages] = useState<string[]>([
-    "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=400&h=400&fit=crop"
-  ]);
+  const [images, setImages] = useState<string[]>([]);
+  const [originalImages, setOriginalImages] = useState<string[]>([]);
+  const [newImageFiles, setNewImageFiles] = useState<{ file: File; url: string }[]>([]);
   const [sizeChart, setSizeChart] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("Clothing");
-  const [selectedSubcategory, setSelectedSubcategory] = useState("Menswear");
+  const [originalSizeChart, setOriginalSizeChart] = useState<string | null>(null);
+  const [newSizeChartFile, setNewSizeChartFile] = useState<File | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedSubcategory, setSelectedSubcategory] = useState("");
+  const [dbCategories, setDbCategories] = useState<Category[]>([]);
+  const [dbSubcategories, setDbSubcategories] = useState<Subcategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const router = useRouter();
 
   // Variants state
   const [sizes, setSizes] = useState<string[]>(["S", "M", "L", "XL"]);
-  const [colors, setColors] = useState<string[]>(["#000000", "#FFFFFF", "#C9A96E"]);
+  const [colors, setColors] = useState<string[]>([]);
   const [newSize, setNewSize] = useState("");
-  const [newColor, setNewColor] = useState("#000000");
-  const [variantInventory, setVariantInventory] = useState<Record<string, number>>({
-    "S-#000000": 10,
-    "M-#000000": 15,
-    "L-#FFFFFF": 12,
-    "XL-#C9A96E": 8
-  });
+  const [colorSearch, setColorSearch] = useState("");
+  const [showColorSuggestions, setShowColorSuggestions] = useState(false);
+  const colorInputRef = useRef<HTMLDivElement>(null);
+  const [variantInventory, setVariantInventory] = useState<Record<string, number>>({});
 
+  useEffect(() => {
+    fetchProduct();
+    fetchCategories();
+  }, [productId]);
+
+  const getVariantRows = () => {
+    if (sizes.length > 0 && colors.length > 0) {
+      return sizes.flatMap(size => 
+        colors.map(colorName => ({
+          key: `${size}-${colorName}`,
+          size,
+          colorName,
+          display: (
+            <div className="flex items-center gap-3">
+              {(() => {
+                const preset = PRESET_COLORS.find(c => c.name === colorName);
+                return <div className="w-5 h-5 rounded-full border border-gray-200 flex-shrink-0" style={{ backgroundColor: preset?.hex ?? "#ccc" }}></div >;
+              })()}
+              <span className="text-sm font-bold text-text-primary">{size}</span>
+              <span className="text-xs font-semibold text-text-secondary">{colorName}</span>
+            </div>
+          )
+        }))
+      );
+    } else if (sizes.length > 0) {
+      return sizes.map(size => ({
+        key: size,
+        size,
+        colorName: null,
+        display: (
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-text-primary">{size}</span>
+          </div>
+        )
+      }));
+    } else if (colors.length > 0) {
+      return colors.map(colorName => ({
+        key: colorName,
+        size: null,
+        colorName,
+        display: (
+          <div className="flex items-center gap-3">
+            {(() => {
+              const preset = PRESET_COLORS.find(c => c.name === colorName);
+              return <div className="w-5 h-5 rounded-full border border-gray-200 flex-shrink-0" style={{ backgroundColor: preset?.hex ?? "#ccc" }}></div >;
+            })()}
+            <span className="text-sm font-bold text-text-primary">{colorName}</span>
+          </div>
+        )
+      }));
+    }
+    return [];
+  };
+
+  // Keep total stock in sync with variant stock sum
+  useEffect(() => {
+    const hasVariants = sizes.length > 0 || colors.length > 0;
+    if (hasVariants) {
+      let totalStockSum = 0;
+      const rows = getVariantRows();
+      rows.forEach(row => {
+        totalStockSum += variantInventory[row.key] || 0;
+      });
+      setTotalStock(totalStockSum);
+    }
+  }, [sizes, colors, variantInventory]);
+
+  async function fetchCategories() {
+    const { data: cats } = await supabase.from("categories").select("*").order("display_order");
+    const { data: subs } = await supabase.from("subcategories").select("*").order("display_order");
+    
+    if (cats) setDbCategories(cats);
+    if (subs) setDbSubcategories(subs);
+  }
+
+  async function fetchProduct() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("id", productId)
+      .single();
+
+    if (!error && data) {
+      const p = data as any;
+      setProductName(p.name);
+      setDescription(p.description || "");
+      setIsOnSale(!!p.old_price);
+      setBasePrice(p.price);
+      setOldPrice(p.old_price || 0);
+      setTotalStock(p.stock);
+      let loadedImages: string[] = [];
+      if (p.images && p.images.length > 0) {
+        loadedImages = p.images;
+      } else {
+        loadedImages = p.image ? [p.image] : [];
+      }
+      setImages(loadedImages);
+      setOriginalImages(loadedImages);
+      setSelectedCategory(p.category);
+      setSelectedSubcategory(p.subcategory);
+      setSizeChart(p.size_chart || null);
+      setOriginalSizeChart(p.size_chart || null);
+      if (p.sizes && p.sizes.length > 0) setSizes(p.sizes);
+      if (p.colors && p.colors.length > 0) {
+        setColors(p.colors.map((c: any) => {
+          if (typeof c === 'object' && c !== null) {
+            return c.name;
+          }
+          if (typeof c === 'string' && c.startsWith("#")) {
+            const preset = PRESET_COLORS.find(pc => pc.hex.toLowerCase() === c.toLowerCase());
+            return preset ? preset.name : c;
+          }
+          return c;
+        }));
+      }
+      if (p.variant_inventory) {
+        const cleanedInventory: Record<string, number> = {};
+        Object.entries(p.variant_inventory).forEach(([key, qty]) => {
+          const parts = key.split("-");
+          if (parts.length === 2) {
+            const [size, colorPart] = parts;
+            if (colorPart.startsWith("#")) {
+              const preset = PRESET_COLORS.find(pc => pc.hex.toLowerCase() === colorPart.toLowerCase());
+              const nameKey = preset ? preset.name : colorPart;
+              cleanedInventory[`${size}-${nameKey}`] = Number(qty);
+            } else {
+              cleanedInventory[key] = Number(qty);
+            }
+          } else {
+            cleanedInventory[key] = Number(qty);
+          }
+        });
+        setVariantInventory(cleanedInventory);
+      }
+    }
+    setLoading(false);
+  }
+
+  // Derived categories object for easy lookup
   const categories: Record<string, string[]> = {};
-  initialMainCategories.forEach(cat => {
-    categories[cat.name] = (initialSubcategoriesData as any)[cat.name]?.map((s: any) => s.name) || [];
+  dbCategories.forEach(cat => {
+    categories[cat.name] = dbSubcategories
+      .filter(sub => sub.category_id === cat.id)
+      .map(sub => sub.name);
   });
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
+      setNewImageFiles([...newImageFiles, { file, url }]);
       setImages([...images, url]);
     }
   };
@@ -70,6 +221,7 @@ export default function EditProductPage() {
   const handleSizeChartUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setNewSizeChartFile(file);
       setSizeChart(URL.createObjectURL(file));
     }
   };
@@ -85,21 +237,186 @@ export default function EditProductPage() {
     setSizes(sizes.filter(s => s !== size));
   };
 
-  const addColor = () => {
-    if (!colors.includes(newColor)) {
-      setColors([...colors, newColor]);
+  const addColor = (colorName: string) => {
+    if (!colors.includes(colorName)) {
+      setColors([...colors, colorName]);
     }
+    setColorSearch("");
+    setShowColorSuggestions(false);
   };
 
   const removeColor = (color: string) => {
     setColors(colors.filter(c => c !== color));
   };
 
-  const updateVariantQty = (size: string, color: string, qty: number) => {
+  const filteredColorSuggestions = colorSearch.trim().length > 0
+    ? PRESET_COLORS.filter(
+        c => c.name.toLowerCase().includes(colorSearch.toLowerCase()) && !colors.includes(c.name)
+      )
+    : [];
+
+  const updateVariantQty = (key: string, qty: number) => {
     setVariantInventory({
       ...variantInventory,
-      [`${size}-${color}`]: qty
+      [key]: qty
     });
+  };
+
+  const handleUpdate = async () => {
+    if (!productName || !basePrice || !totalStock || !selectedSubcategory) {
+      alert("Please fill in all required fields (Name, Price, Stock, Sub-category)");
+      return;
+    }
+
+    setIsUpdating(true);
+    
+    try {
+      // 1. Upload NEW images to Supabase Storage if any
+      const uploadedUrls: string[] = [];
+      for (const item of newImageFiles) {
+        const { file } = item;
+        const fileExt = file.name.split('.').pop();
+        const cleanBaseName = file.name.substring(0, file.name.lastIndexOf('.')).replace(/[^a-zA-Z0-9]/g, "_");
+        const fileName = `${productId}-${cleanBaseName}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        // Check if file already exists in the bucket to prevent duplicate uploads
+        const { data: existingFiles } = await supabase.storage
+          .from('Products')
+          .list('', {
+            search: fileName
+          });
+        const exists = existingFiles?.some(f => f.name === fileName) ?? false;
+
+        if (!exists) {
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('Products')
+            .upload(filePath, file);
+
+          if (uploadError) throw uploadError;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('Products')
+          .getPublicUrl(filePath);
+          
+        uploadedUrls.push(publicUrl);
+      }
+
+      // Reconstruct final images list preserving order, deletion, and newly uploaded public URLs
+      const finalImageUrls = images.map(img => {
+        if (img.startsWith('blob:')) {
+          const uploadedItem = newImageFiles.find(item => item.url === img);
+          if (uploadedItem) {
+            const index = newImageFiles.indexOf(uploadedItem);
+            return uploadedUrls[index];
+          }
+          return null;
+        }
+        return img;
+      }).filter(Boolean) as string[];
+
+      const finalImageUrl = finalImageUrls[0] || "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=100&h=100&fit=crop";
+
+      // 2. Upload NEW size chart if any
+      let finalSizeChartUrl = sizeChart;
+
+      if (newSizeChartFile) {
+        const fileExt = newSizeChartFile.name.split('.').pop();
+        const fileName = `sizechart-${productId}-${Math.random()}.${fileExt}`;
+        const filePath = `${fileName}`;
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('Products')
+          .upload(filePath, newSizeChartFile);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('Products')
+          .getPublicUrl(filePath);
+          
+        finalSizeChartUrl = publicUrl;
+      }
+
+      // 3. Update Database
+      const stockStatus = totalStock === 0 ? "Out of Stock" : totalStock < 10 ? "Low Stock" : "In Stock";
+      
+      // Calculate discount if applicable
+      let discount = "";
+      if (isOnSale && oldPrice && oldPrice > basePrice) {
+        const disc = Math.round(((oldPrice - basePrice) / oldPrice) * 100);
+        discount = `${disc}%`;
+      }
+
+      const mappedColors = colors.map(colorName => {
+        const preset = PRESET_COLORS.find(c => c.name === colorName);
+        return {
+          name: colorName,
+          hex: preset?.hex || "#CCCCCC"
+        };
+      });
+
+       const { error } = await supabase
+        .from("products")
+        .update({
+          name: productName,
+          description,
+          category: selectedCategory,
+          subcategory: selectedSubcategory,
+          price: basePrice,
+          old_price: isOnSale ? oldPrice : null,
+          discount: discount || null,
+          stock: totalStock,
+          stock_status: stockStatus,
+          image: finalImageUrl,
+          images: finalImageUrls,
+          size_chart: finalSizeChartUrl,
+          sizes,
+          colors: mappedColors,
+          variant_inventory: variantInventory,
+        })
+        .eq("id", productId);
+
+      if (error) throw error;
+
+      // 4. Clean up removed assets from storage bucket
+      const getFilePathFromUrl = (url: string) => {
+        const marker = '/Products/';
+        const index = url.indexOf(marker);
+        if (index !== -1) {
+          return decodeURIComponent(url.substring(index + marker.length));
+        }
+        return null;
+      };
+
+      const removedFiles: string[] = [];
+
+      originalImages.forEach(img => {
+        if (!finalImageUrls.includes(img)) {
+          const path = getFilePathFromUrl(img);
+          if (path) removedFiles.push(path);
+        }
+      });
+
+      if (originalSizeChart && originalSizeChart !== finalSizeChartUrl) {
+        const path = getFilePathFromUrl(originalSizeChart);
+        if (path) removedFiles.push(path);
+      }
+
+      if (removedFiles.length > 0) {
+        await supabase.storage
+          .from('Products')
+          .remove(removedFiles);
+      }
+
+      router.push("/products");
+
+    } catch (error: any) {
+      console.error("Error updating product:", error);
+      alert("Error updating product: " + error.message);
+      setIsUpdating(false);
+    }
   };
 
   return (
@@ -127,8 +444,13 @@ export default function EditProductPage() {
           <button className="px-6 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-text-secondary hover:bg-gray-50 transition-colors">
             Discard
           </button>
-          <button className="px-6 py-2.5 bg-brand-gold text-white rounded-xl text-sm font-bold hover:brightness-110 transition-all shadow-lg shadow-brand-gold/20">
-            Update Product
+          <button 
+            onClick={handleUpdate}
+            disabled={isUpdating || loading}
+            className="px-6 py-2.5 bg-brand-gold text-white rounded-xl text-sm font-bold hover:brightness-110 transition-all shadow-lg shadow-brand-gold/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {isUpdating && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isUpdating ? "Updating..." : "Update Product"}
           </button>
         </div>
       </div>
@@ -201,7 +523,7 @@ export default function EditProductPage() {
                     value={basePrice}
                     onChange={(e) => setBasePrice(Number(e.target.value))}
                     placeholder="0.00"
-                    className="w-full pl-8 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold"
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold"
                   />
                 </div>
               </div>
@@ -216,7 +538,7 @@ export default function EditProductPage() {
                       value={oldPrice}
                       onChange={(e) => setOldPrice(Number(e.target.value))}
                       placeholder="0.00"
-                      className="w-full pl-8 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold line-through"
+                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold line-through"
                     />
                   </div>
                 </div>
@@ -230,9 +552,18 @@ export default function EditProductPage() {
                     value={totalStock}
                     onChange={(e) => setTotalStock(Number(e.target.value))}
                     placeholder="0"
-                    className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold"
+                    disabled={sizes.length > 0 || colors.length > 0}
+                    className={cn(
+                      "w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold",
+                      (sizes.length > 0 || colors.length > 0) && "opacity-60 cursor-not-allowed"
+                    )}
                   />
                 </div>
+                {(sizes.length > 0 || colors.length > 0) && (
+                  <span className="text-[10px] font-bold text-brand-gold mt-1 uppercase tracking-wider animate-fade-in">
+                    Calculated from variant stocks
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -284,46 +615,77 @@ export default function EditProductPage() {
               <div className="space-y-4">
                 <label className="text-xs font-bold text-text-muted uppercase tracking-widest">Available Colors</label>
                 <div className="flex flex-wrap gap-3">
-                  {colors.map(color => (
-                    <div key={color} className="group relative">
-                      <div 
-                        className="w-8 h-8 rounded-full border-2 border-white shadow-sm ring-1 ring-gray-200"
-                        style={{ backgroundColor: color }}
-                      ></div>
-                      <button 
-                        onClick={() => removeColor(color)}
-                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  ))}
+                  {colors.map(colorName => {
+                    const preset = PRESET_COLORS.find(c => c.name === colorName);
+                    return (
+                      <div key={colorName} className="group relative flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-full pl-2 pr-7 py-1.5 hover:border-brand-gold transition-all">
+                        <div
+                          className="w-4 h-4 rounded-full border border-gray-200 flex-shrink-0"
+                          style={{ backgroundColor: preset?.hex ?? "#ccc" }}
+                        />
+                        <span className="text-xs font-bold text-text-primary">{colorName}</span>
+                        <button
+                          onClick={() => removeColor(colorName)}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="flex gap-2 mt-4">
-                  <div className="flex-1 relative overflow-hidden rounded-lg">
-                    <input 
-                      type="color" 
-                      value={newColor}
-                      onChange={(e) => setNewColor(e.target.value)}
-                      className="absolute -inset-2 w-[150%] h-[150%] cursor-pointer"
+
+                {/* Color name search */}
+                <div className="relative" ref={colorInputRef}>
+                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-transparent rounded-lg focus-within:bg-white focus-within:border-brand-gold transition-all">
+                    <Search className="w-4 h-4 text-text-muted flex-shrink-0" />
+                    <input
+                      type="text"
+                      value={colorSearch}
+                      onChange={(e) => {
+                        setColorSearch(e.target.value);
+                        setShowColorSuggestions(true);
+                      }}
+                      onFocus={() => setShowColorSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowColorSuggestions(false), 150)}
+                      placeholder="Type a color name..."
+                      className="flex-1 bg-transparent text-xs font-bold outline-none text-text-primary placeholder:text-text-muted"
                     />
-                    <div className="absolute inset-0 pointer-events-none flex items-center px-3 gap-2 bg-gray-50 border border-transparent rounded-lg">
-                       <Palette className="w-3 h-3 text-text-muted" />
-                       <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">{newColor}</span>
-                    </div>
                   </div>
-                  <button 
-                    onClick={addColor}
-                    className="p-2 bg-brand-sidebar text-white rounded-lg hover:brightness-110 transition-all"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
+
+                  {/* Suggestions dropdown */}
+                  {showColorSuggestions && filteredColorSuggestions.length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto animate-fade-in">
+                      {filteredColorSuggestions.map(c => (
+                        <button
+                          key={c.name}
+                          type="button"
+                          onMouseDown={() => addColor(c.name)}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-brand-gold-light transition-colors text-left"
+                        >
+                          <div
+                            className="w-5 h-5 rounded-full border border-gray-200 flex-shrink-0"
+                            style={{ backgroundColor: c.hex }}
+                          />
+                          <span className="text-sm font-semibold text-text-primary">{c.name}</span>
+                          <span className="text-[10px] font-mono text-text-muted ml-auto">{c.hex}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* No match message */}
+                  {showColorSuggestions && colorSearch.trim().length > 0 && filteredColorSuggestions.length === 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3">
+                      <p className="text-xs text-text-muted font-bold">No matching color found</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Variant Specific Inventory Table */}
-            {sizes.length > 0 && colors.length > 0 && (
+            {(sizes.length > 0 || colors.length > 0) && (
               <div className="pt-6 border-t border-gray-100 space-y-4">
                 <div className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-brand-gold" />
@@ -339,28 +701,22 @@ export default function EditProductPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {sizes.flatMap(size => 
-                        colors.map(color => (
-                          <tr key={`${size}-${color}`} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded-full border border-gray-100" style={{ backgroundColor: color }}></div>
-                                <span className="text-sm font-bold text-text-primary">{size}</span>
-                                <span className="text-[10px] text-text-muted font-mono uppercase">{color}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <input 
-                                type="number" 
-                                placeholder="0"
-                                value={variantInventory[`${size}-${color}`] || ""}
-                                onChange={(e) => updateVariantQty(size, color, parseInt(e.target.value) || 0)}
-                                className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded text-xs font-bold outline-none focus:border-brand-gold transition-all"
-                              />
-                            </td>
-                          </tr>
-                        ))
-                      )}
+                      {getVariantRows().map(row => (
+                        <tr key={row.key} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-4 py-3">
+                            {row.display}
+                          </td>
+                          <td className="px-4 py-3">
+                            <input 
+                              type="number" 
+                              placeholder="0"
+                              value={variantInventory[row.key] || ""}
+                              onChange={(e) => updateVariantQty(row.key, parseInt(e.target.value) || 0)}
+                              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded text-xs font-bold outline-none focus:border-brand-gold transition-all"
+                            />
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -380,7 +736,11 @@ export default function EditProductPage() {
                 <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-gray-100 bg-gray-50 group">
                   <img src={img} alt="product" className="w-full h-full object-cover" />
                   <button 
-                    onClick={() => setImages(images.filter((_, idx) => idx !== i))}
+                    onClick={() => {
+                      const deletedUrl = images[i];
+                      setImages(images.filter((_, idx) => idx !== i));
+                      setNewImageFiles(newImageFiles.filter(item => item.url !== deletedUrl));
+                    }}
                     className="absolute top-2 right-2 p-1 bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-3 h-3" />
@@ -476,6 +836,13 @@ export default function EditProductPage() {
           </div>
         </div>
       </div>
+
+      {loading && (
+        <div className="fixed inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
+          <Loader2 className="w-10 h-10 text-brand-gold animate-spin mb-4" />
+          <p className="text-sm font-bold text-text-muted">Loading product details...</p>
+        </div>
+      )}
     </div>
   );
 }

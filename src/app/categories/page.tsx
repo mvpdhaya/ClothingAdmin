@@ -1,230 +1,214 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Plus, 
-  GripVertical, 
   Edit, 
   ChevronRight,
   FolderTree,
-  Shirt,
-  Watch,
-  Zap,
-  ShoppingBag,
-  Heart,
-  Star,
   X,
-  Smartphone,
-  Gem,
-  Coffee,
   Trash2,
   Edit2,
   AlertTriangle
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-
-import { initialMainCategories, initialSubcategoriesData } from "@/lib/data";
+import { supabase } from "@/lib/supabase";
+import type { Category, Subcategory } from "@/lib/types";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const availableIcons = [
-  { name: "Shirt", icon: Shirt },
-  { name: "Watch", icon: Watch },
-  { name: "Zap", icon: Zap },
-  { name: "ShoppingBag", icon: ShoppingBag },
-  { name: "Heart", icon: Heart },
-  { name: "Star", icon: Star },
-  { name: "Smartphone", icon: Smartphone },
-  { name: "Gem", icon: Gem },
-  { name: "Coffee", icon: Coffee },
-];
-
 export default function CategoriesPage() {
-  const [categories, setCategories] = useState(initialMainCategories);
-  const [selectedCat, setSelectedCat] = useState("Clothing");
-  const [subcategories, setSubcategories] = useState<any>(initialSubcategoriesData);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCatName, setSelectedCatName] = useState("Clothing");
+  const [subcategories, setSubcategories] = useState<{ [key: string]: any[] }>({});
   
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingCatId, setEditingCatId] = useState<number | null>(null);
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
-  const [selectedIconName, setSelectedIconName] = useState("Shirt");
+  const [newDisplayOrder, setNewDisplayOrder] = useState(1);
 
   // Delete Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deletingCat, setDeletingCat] = useState<any>(null);
+  const [deletingCat, setDeletingCat] = useState<Category | null>(null);
 
   // Subcategory State
   const [newSubName, setNewSubName] = useState("");
+  const [newSubDisplayOrder, setNewSubDisplayOrder] = useState(1);
   const [editingSub, setEditingSub] = useState<any>(null);
   const [isEditSubModalOpen, setIsEditSubModalOpen] = useState(false);
   const [editSubName, setEditSubName] = useState("");
-  const [expandedSubs, setExpandedSubs] = useState<number[]>([]);
-  const [newNestedName, setNewNestedName] = useState<{ [id: number]: string }>({});
+  const [editSubDisplayOrder, setEditSubDisplayOrder] = useState(0);
+  
+  // Validation Errors
+  const [catError, setCatError] = useState<string | null>(null);
+  const [subError, setSubError] = useState<string | null>(null);
+  const [editSubError, setEditSubError] = useState<string | null>(null);
+
+
+  const fetchCategories = async () => {
+    const { data: cats } = await supabase.from('categories').select('*').order('display_order', { ascending: true });
+    const { data: subs } = await supabase.from('subcategories').select('*').order('display_order', { ascending: true });
+    
+    if (cats) {
+      setCategories(cats);
+      
+      if (subs) {
+        const structured: { [key: string]: any[] } = {};
+        cats.forEach(cat => {
+          const rootSubs = subs.filter(s => s.category_id === cat.id && !s.parent_id);
+          structured[cat.name] = rootSubs;
+        });
+        setSubcategories(structured);
+      }
+
+      if (cats.length > 0 && !cats.find(c => c.name === selectedCatName)) {
+        setSelectedCatName(cats[0].name);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   const handleOpenAddModal = () => {
     setEditingCatId(null);
     setNewName("");
-    setSelectedIconName("Shirt");
+    setNewDisplayOrder(categories.length + 1);
+    setCatError(null);
     setIsAddModalOpen(true);
   };
 
-  const handleEditClick = (e: React.MouseEvent, cat: any) => {
+  const handleEditClick = (e: React.MouseEvent, cat: Category) => {
     e.stopPropagation();
     setEditingCatId(cat.id);
     setNewName(cat.name);
-    
-    // Find icon name
-    const iconEntry = availableIcons.find(i => i.icon === cat.icon);
-    setSelectedIconName(iconEntry ? iconEntry.name : "Shirt");
+    setNewDisplayOrder(cat.display_order || 0);
+    setCatError(null);
     setIsAddModalOpen(true);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, cat: any) => {
+  const handleDeleteClick = (e: React.MouseEvent, cat: Category) => {
     e.stopPropagation();
     setDeletingCat(cat);
     setIsDeleteModalOpen(true);
   };
 
-  const handleSaveCategory = () => {
+  const handleSaveCategory = async () => {
     if (!newName) return;
     
-    const iconObj = availableIcons.find(i => i.name === selectedIconName) || availableIcons[0];
-    
-    if (editingCatId) {
-      // Update existing
-      setCategories(categories.map(cat => 
-        cat.id === editingCatId 
-          ? { ...cat, name: newName, icon: iconObj.icon } 
-          : cat
-      ));
-      
-      // Update subcategories key if name changed
-      const oldName = categories.find(c => c.id === editingCatId)?.name;
-      if (oldName && oldName !== newName) {
-        const updatedSubs = { ...subcategories };
-        updatedSubs[newName] = updatedSubs[oldName];
-        delete updatedSubs[oldName];
-        setSubcategories(updatedSubs);
-        if (selectedCat === oldName) setSelectedCat(newName);
-      }
-    } else {
-      // Add new
-      const newCat = {
-        id: Date.now(),
-        name: newName,
-        icon: iconObj.icon,
-        count: 0,
-        active: false
-      };
-      setCategories([...categories, newCat]);
-      setSubcategories({ ...subcategories, [newName]: [] });
+    if (newDisplayOrder < 1) {
+      setCatError("Display order must be 1 or greater.");
+      return;
     }
 
+    if (editingCatId) {
+      // Check for duplicate display order (excluding self)
+      const isDuplicate = categories.some(c => c.display_order === newDisplayOrder && c.id !== editingCatId);
+      if (isDuplicate) {
+        setCatError(`Display order ${newDisplayOrder} is already taken by another main category.`);
+        return;
+      }
+      // Update existing
+      await supabase.from('categories').update({ name: newName, icon_name: "none", display_order: newDisplayOrder }).eq('id', editingCatId);
+      if (selectedCatName === categories.find(c => c.id === editingCatId)?.name) {
+        setSelectedCatName(newName);
+      }
+    } else {
+      // Check for duplicate display order
+      const isDuplicate = categories.some(c => c.display_order === newDisplayOrder);
+      if (isDuplicate) {
+        setCatError(`Display order ${newDisplayOrder} is already taken by another main category.`);
+        return;
+      }
+      // Add new
+      await supabase.from('categories').insert({ name: newName, icon_name: "none", count: 0, display_order: newDisplayOrder });
+    }
+
+    await fetchCategories();
     setNewName("");
+    setNewDisplayOrder(categories.length + 1);
+    setCatError(null);
     setIsAddModalOpen(false);
     setEditingCatId(null);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deletingCat) return;
-    
-    setCategories(categories.filter(c => c.id !== deletingCat.id));
-    const updatedSubs = { ...subcategories };
-    delete updatedSubs[deletingCat.name];
-    setSubcategories(updatedSubs);
-    
-    if (selectedCat === deletingCat.name) {
-      setSelectedCat(categories[0]?.name || "");
-    }
-    
+    await supabase.from('categories').delete().eq('id', deletingCat.id);
+    await fetchCategories();
     setIsDeleteModalOpen(false);
     setDeletingCat(null);
   };
 
-  const handleAddSubcategory = () => {
+  const handleAddSubcategory = async () => {
     if (!newSubName) return;
+    const cat = categories.find(c => c.name === selectedCatName);
+    if (!cat) return;
 
-    const currentSubs = subcategories[selectedCat] || [];
-    const newSub = {
-      id: Date.now(),
+    if (newSubDisplayOrder < 1) {
+      setSubError("Order must be 1 or greater.");
+      return;
+    }
+
+    // Check for duplicate display order in the same category
+    const currentSubs = subcategories[selectedCatName] || [];
+    const isDuplicate = currentSubs.some(s => s.display_order === newSubDisplayOrder);
+    if (isDuplicate) {
+      setSubError(`Order ${newSubDisplayOrder} is taken.`);
+      return;
+    }
+
+    await supabase.from('subcategories').insert({
+      category_id: cat.id,
       name: newSubName,
-      count: 0
-    };
-
-    setSubcategories({
-      ...subcategories,
-      [selectedCat]: [...currentSubs, newSub]
+      count: 0,
+      display_order: newSubDisplayOrder
     });
 
+    await fetchCategories();
     setNewSubName("");
+    setNewSubDisplayOrder(1);
+    setSubError(null);
   };
 
-  const handleDeleteSubcategory = (subId: number) => {
-    const currentSubs = subcategories[selectedCat] || [];
-    setSubcategories({
-      ...subcategories,
-      [selectedCat]: currentSubs.filter((s: any) => s.id !== subId)
-    });
+  const handleDeleteSubcategory = async (subId: string) => {
+    await supabase.from('subcategories').delete().eq('id', subId);
+    await fetchCategories();
   };
 
   const handleOpenEditSubModal = (sub: any) => {
     setEditingSub(sub);
     setEditSubName(sub.name);
+    setEditSubDisplayOrder(sub.display_order || 0);
+    setEditSubError(null);
     setIsEditSubModalOpen(true);
   };
 
-  const handleSaveSubcategory = () => {
-    if (!editSubName || !editingSub) return;
+  const handleSaveSubcategory = async () => {
+    if (editSubDisplayOrder < 1) {
+      setEditSubError("Display order must be 1 or greater.");
+      return;
+    }
+
+    // Check for duplicate display order (excluding self)
+    const currentSubs = subcategories[selectedCatName] || [];
+    const isDuplicate = currentSubs.some(s => s.display_order === editSubDisplayOrder && s.id !== editingSub.id);
+    if (isDuplicate) {
+      setEditSubError(`Display order ${editSubDisplayOrder} is already taken.`);
+      return;
+    }
     
-    const currentSubs = subcategories[selectedCat] || [];
-    setSubcategories({
-      ...subcategories,
-      [selectedCat]: currentSubs.map((s: any) => 
-        s.id === editingSub.id ? { ...s, name: editSubName } : s
-      )
-    });
+    await supabase.from('subcategories').update({ name: editSubName, display_order: editSubDisplayOrder }).eq('id', editingSub.id);
+    await fetchCategories();
     
     setIsEditSubModalOpen(false);
     setEditingSub(null);
-  };
-
-  const toggleSubExpansion = (subId: number) => {
-    setExpandedSubs(prev => 
-      prev.includes(subId) ? prev.filter(id => id !== subId) : [...prev, subId]
-    );
-  };
-
-  const handleAddNestedSub = (subId: number) => {
-    const name = newNestedName[subId];
-    if (!name) return;
-
-    const currentSubs = subcategories[selectedCat] || [];
-    setSubcategories({
-      ...subcategories,
-      [selectedCat]: currentSubs.map((s: any) => 
-        s.id === subId 
-          ? { ...s, children: [...(s.children || []), { id: Date.now(), name, count: 0 }] } 
-          : s
-      )
-    });
-
-    setNewNestedName({ ...newNestedName, [subId]: "" });
-  };
-
-  const handleDeleteNestedSub = (subId: number, nestedId: number) => {
-    const currentSubs = subcategories[selectedCat] || [];
-    setSubcategories({
-      ...subcategories,
-      [selectedCat]: currentSubs.map((s: any) => 
-        s.id === subId 
-          ? { ...s, children: (s.children || []).filter((n: any) => n.id !== nestedId) } 
-          : s
-      )
-    });
+    setEditSubError(null);
   };
 
   return (
@@ -246,21 +230,19 @@ export default function CategoriesPage() {
           <h3 className="text-[10px] font-bold text-text-muted tracking-widest uppercase ml-1">Main Categories</h3>
           <div className="card p-2 space-y-1">
             {categories.map((cat) => {
-              const isActive = selectedCat === cat.name;
+              const isActive = selectedCatName === cat.name;
+              
               return (
                 <div
                   key={cat.id}
-                  onClick={() => setSelectedCat(cat.name)}
+                  onClick={() => setSelectedCatName(cat.name)}
                   className={cn(
                     "w-full flex items-center gap-4 p-4 rounded-xl transition-all group cursor-pointer relative h-[72px]",
                     isActive ? "bg-brand-gold-light text-brand-gold shadow-sm" : "hover:bg-gray-50 text-text-secondary"
                   )}
                 >
-                  <div className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center transition-colors",
-                    isActive ? "bg-brand-gold text-white" : "bg-gray-100 group-hover:bg-white"
-                  )}>
-                    <cat.icon className="w-5 h-5" />
+                  <div className="w-8 h-8 rounded bg-white flex items-center justify-center font-mono text-[10px] font-bold text-text-muted border border-gray-100 shrink-0">
+                    {cat.display_order}
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-sm font-bold">{cat.name}</p>
@@ -292,6 +274,9 @@ export default function CategoriesPage() {
                 </div>
               );
             })}
+            {categories.length === 0 && (
+               <p className="text-sm text-text-muted text-center py-4">No categories found.</p>
+            )}
           </div>
         </div>
 
@@ -299,35 +284,25 @@ export default function CategoriesPage() {
         <div className="lg:col-span-8 space-y-4">
           <div className="flex justify-between items-end ml-1">
             <h3 className="text-[10px] font-bold text-text-muted tracking-widest uppercase">
-              Subcategories in <span className="text-text-primary">{selectedCat}</span>
+              Subcategories in <span className="text-text-primary">{selectedCatName}</span>
             </h3>
             <span className="text-[10px] font-bold text-text-muted">DRAG TO REORDER</span>
           </div>
           
           <div className="card space-y-2">
-            {(subcategories[selectedCat] || []).map((sub: any, i: number) => {
-              const isExpanded = expandedSubs.includes(sub.id);
+            {(subcategories[selectedCatName] || []).map((sub: any, i: number) => {
               return (
                 <div key={sub.id} className="space-y-2">
                   <div 
-                    className={cn(
-                      "flex items-center gap-4 p-4 rounded-xl transition-all group border border-transparent",
-                      isExpanded ? "bg-white border-gray-100 shadow-sm" : "bg-gray-50/50 hover:bg-white hover:border-gray-100"
-                    )}
+                    className="flex items-center gap-4 p-4 rounded-xl transition-all group border border-transparent bg-gray-50/50 hover:bg-white hover:border-gray-100"
                   >
-                    <div 
-                      onClick={() => toggleSubExpansion(sub.id)}
-                      className="cursor-pointer text-text-muted hover:text-brand-gold transition-colors"
-                    >
-                      <ChevronRight className={cn("w-4 h-4 transition-transform", isExpanded && "rotate-90 text-brand-gold")} />
+                    <div className="w-8 h-8 rounded bg-white flex items-center justify-center font-mono text-[10px] font-bold text-text-muted border border-gray-100 shrink-0">
+                      {sub.display_order}
                     </div>
-                    <div className="w-8 h-8 rounded bg-white flex items-center justify-center font-mono text-[10px] font-bold text-text-muted border border-gray-100">
-                      {i + 1}
-                    </div>
-                    <div className="flex-1 cursor-pointer" onClick={() => toggleSubExpansion(sub.id)}>
+                    <div className="flex-1">
                       <p className="text-sm font-bold text-text-primary">{sub.name}</p>
                       <p className="text-[10px] text-text-muted font-bold uppercase tracking-widest mt-0.5">
-                        {sub.count} Products {sub.children && `· ${sub.children.length} Types`}
+                        {sub.count} Products
                       </p>
                     </div>
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -345,45 +320,6 @@ export default function CategoriesPage() {
                       </button>
                     </div>
                   </div>
-
-                  {/* Nested Children */}
-                  {isExpanded && (
-                    <div className="ml-12 space-y-2 animate-in slide-in-from-top-2 duration-200">
-                      {(sub.children || []).map((nested: any) => (
-                        <div key={nested.id} className="flex items-center justify-between p-3 bg-gray-50/50 rounded-lg border border-transparent hover:border-gray-100 group">
-                          <div className="flex items-center gap-3">
-                            <div className="w-1.5 h-1.5 rounded-full bg-brand-gold" />
-                            <span className="text-sm text-text-secondary font-medium">{nested.name}</span>
-                            <span className="text-[10px] font-bold text-text-muted bg-white px-1.5 py-0.5 rounded border border-gray-100">{nested.count}</span>
-                          </div>
-                          <button 
-                            onClick={() => handleDeleteNestedSub(sub.id, nested.id)}
-                            className="p-1.5 text-text-muted hover:text-danger opacity-0 group-hover:opacity-100 transition-all"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                      
-                      {/* Add Nested Input */}
-                      <div className="flex gap-2 p-1">
-                        <input 
-                          type="text" 
-                          placeholder={`Add type to ${sub.name}...`}
-                          value={newNestedName[sub.id] || ""}
-                          onChange={(e) => setNewNestedName({ ...newNestedName, [sub.id]: e.target.value })}
-                          onKeyDown={(e) => e.key === "Enter" && handleAddNestedSub(sub.id)}
-                          className="flex-1 px-3 py-2 bg-white border border-gray-100 rounded-lg text-xs outline-none focus:border-brand-gold transition-all"
-                        />
-                        <button 
-                          onClick={() => handleAddNestedSub(sub.id)}
-                          className="p-2 bg-brand-sidebar text-white rounded-lg hover:brightness-110 transition-all"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -392,11 +328,25 @@ export default function CategoriesPage() {
               <div className="flex gap-2">
                 <input 
                   type="text" 
-                  placeholder={`Add new subcategory to ${selectedCat}...`}
+                  placeholder={`Add new subcategory to ${selectedCatName}...`}
                   value={newSubName}
                   onChange={(e) => setNewSubName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddSubcategory()}
                   className="flex-1 px-4 py-2 bg-gray-50 border border-transparent rounded-lg text-sm outline-none focus:bg-white focus:border-brand-gold transition-all"
+                />
+                <input 
+                  type="number" 
+                  placeholder="Order"
+                  value={newSubDisplayOrder}
+                  onChange={(e) => {
+                    setNewSubDisplayOrder(parseInt(e.target.value) || 0);
+                    setSubError(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddSubcategory()}
+                  className={cn(
+                    "w-20 px-3 py-2 bg-gray-50 border rounded-lg text-sm outline-none transition-all",
+                    subError ? "border-rose-500 focus:bg-white" : "border-transparent focus:bg-white focus:border-brand-gold"
+                  )}
                 />
                 <button 
                   onClick={handleAddSubcategory}
@@ -406,6 +356,7 @@ export default function CategoriesPage() {
                   Add
                 </button>
               </div>
+              {subError && <p className="text-[10px] font-bold text-rose-500 mt-2 ml-1 animate-fade-in">{subError}</p>}
             </div>
           </div>
 
@@ -440,34 +391,36 @@ export default function CategoriesPage() {
             </div>
 
             <div className="p-6 space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-text-secondary">Category Name</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Footwear"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-sm font-bold text-text-secondary">Choose Icon</label>
-                <div className="grid grid-cols-5 gap-3">
-                  {availableIcons.map((item) => (
-                    <button
-                      key={item.name}
-                      onClick={() => setSelectedIconName(item.name)}
-                      className={cn(
-                        "w-10 h-10 rounded-full flex items-center justify-center transition-all",
-                        selectedIconName === item.name 
-                          ? "bg-brand-gold text-white shadow-lg shadow-brand-gold/20 scale-110" 
-                          : "bg-gray-50 text-text-muted hover:bg-gray-100"
-                      )}
-                    >
-                      <item.icon className="w-5 h-5" />
-                    </button>
-                  ))}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-text-secondary">Category Name</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. Footwear"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-text-secondary">Display Order</label>
+                  <input 
+                    type="number" 
+                    value={newDisplayOrder}
+                    onChange={(e) => {
+                      setNewDisplayOrder(parseInt(e.target.value) || 0);
+                      setCatError(null);
+                    }}
+                    className={cn(
+                      "w-full px-4 py-3 bg-gray-50 border rounded-xl text-sm outline-none transition-all",
+                      catError ? "border-rose-500 focus:bg-white" : "border-transparent focus:bg-white focus:border-brand-gold"
+                    )}
+                  />
+                  {catError ? (
+                    <p className="text-xs font-bold text-rose-500 animate-fade-in">{catError}</p>
+                  ) : (
+                    <p className="text-xs text-text-muted">Lower numbers appear first.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -552,6 +505,22 @@ export default function CategoriesPage() {
                   onChange={(e) => setEditSubName(e.target.value)}
                   className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all"
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-text-secondary">Display Order</label>
+                <input 
+                  type="number" 
+                  value={editSubDisplayOrder}
+                  onChange={(e) => {
+                    setEditSubDisplayOrder(parseInt(e.target.value) || 0);
+                    setEditSubError(null);
+                  }}
+                  className={cn(
+                    "w-full px-4 py-3 bg-gray-50 border rounded-xl text-sm outline-none transition-all",
+                    editSubError ? "border-rose-500 focus:bg-white" : "border-transparent focus:bg-white focus:border-brand-gold"
+                  )}
+                />
+                {editSubError && <p className="text-xs font-bold text-rose-500 animate-fade-in">{editSubError}</p>}
               </div>
             </div>
 

@@ -11,44 +11,82 @@ import {
   Search,
   Filter,
   CheckCircle2,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import type { Notification } from "@/lib/types";
+import { formatDistanceToNow } from "date-fns";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: "New Order #ORD-2024", desc: "Arjun Kumar placed an order for Rs. 4,500. Address: 123 Colombo St, Sri Lanka.", time: "5 minutes ago", date: "Today", type: "order", read: false },
-    { id: 2, title: "New Customer Signup", desc: "Sneha Reddy created a new account using Google Auth.", time: "2 hours ago", date: "Today", type: "user", read: false },
-    { id: 3, title: "Stock Alert: White Oxford", desc: "Classic White Oxford (Size M) is running low in stock. Current inventory: 2 units.", time: "5 hours ago", date: "Today", type: "alert", read: true },
-    { id: 4, title: "Order Cancelled #ORD-2021", desc: "Order was cancelled by the customer due to delivery delay.", time: "1 day ago", date: "Yesterday", type: "alert", read: true },
-    { id: 5, title: "System Update Complete", desc: "LUMIÈRE Admin Panel has been updated to v2.4.0 with improved performance.", time: "2 days ago", date: "May 5, 2024", type: "system", read: true },
-    { id: 6, title: "New Review Received", desc: "A customer left a 5-star review for 'Linen Summer Dress'.", time: "3 days ago", date: "May 4, 2024", type: "user", read: true },
-  ]);
-
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
 
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  async function fetchNotifications() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching notifications:", error);
+    } else {
+      setNotifications(data || []);
+    }
+    setLoading(false);
+  }
+
   const filteredNotifications = notifications.filter(n => {
-    if (filter === "unread") return !n.read;
+    if (filter === "unread") return !n.is_read;
     if (filter === "orders") return n.type === "order";
     if (filter === "alerts") return n.type === "alert";
     return true;
   });
 
-  const markRead = (id: number) => {
-    setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+  const markRead = async (id: string) => {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", id);
+
+    if (!error) {
+      setNotifications(notifications.map(n => n.id === id ? { ...n, is_read: true } : n));
+    }
   };
 
-  const deleteNotification = (id: number) => {
-    setNotifications(notifications.filter(n => n.id !== id));
+  const deleteNotification = async (id: string) => {
+    const { error } = await supabase
+      .from("notifications")
+      .delete()
+      .eq("id", id);
+
+    if (!error) {
+      setNotifications(notifications.filter(n => n.id !== id));
+    }
   };
 
-  const markAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+  const markAllRead = async () => {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("is_read", false);
+
+    if (!error) {
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+    }
   };
 
   const getIcon = (type: string) => {
@@ -118,18 +156,23 @@ export default function NotificationsPage() {
       </div>
 
       {/* Notifications List */}
-      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-        {filteredNotifications.length > 0 ? (
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden min-h-[400px]">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24">
+            <Loader2 className="w-8 h-8 text-brand-gold animate-spin mb-4" />
+            <p className="text-sm text-text-muted font-bold">Fetching notifications...</p>
+          </div>
+        ) : filteredNotifications.length > 0 ? (
           <div className="divide-y divide-gray-50">
             {filteredNotifications.map((n) => (
               <div 
                 key={n.id} 
                 className={cn(
                   "p-6 flex gap-6 group transition-all relative",
-                  !n.read ? "bg-brand-gold/[0.02]" : "hover:bg-gray-50/50"
+                  !n.is_read ? "bg-brand-gold/[0.02]" : "hover:bg-gray-50/50"
                 )}
               >
-                {!n.read && (
+                {!n.is_read && (
                   <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-brand-gold shadow-[2px_0_10px_rgba(180,145,95,0.2)]"></div>
                 )}
                 
@@ -144,25 +187,25 @@ export default function NotificationsPage() {
                   <div className="flex justify-between items-start mb-1">
                     <h4 className={cn(
                       "text-base leading-tight",
-                      !n.read ? "font-bold text-text-primary" : "text-text-secondary font-medium"
+                      !n.is_read ? "font-bold text-text-primary" : "text-text-secondary font-medium"
                     )}>
                       {n.title}
                     </h4>
                     <div className="flex items-center gap-2 text-xs text-text-muted">
                       <Clock className="w-3 h-3" />
-                      {n.time}
+                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
                     </div>
                   </div>
                   <p className="text-sm text-text-muted leading-relaxed max-w-2xl mb-4">
-                    {n.desc}
+                    {n.description}
                   </p>
                   
                   <div className="flex items-center justify-between">
                     <div className="text-[10px] font-bold text-text-muted uppercase tracking-widest bg-gray-100 px-2 py-0.5 rounded">
-                      {n.date}
+                      {new Date(n.created_at).toLocaleDateString()}
                     </div>
                     <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {!n.read && (
+                      {!n.is_read && (
                         <button 
                           onClick={() => markRead(n.id)}
                           className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
