@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { 
-  Store, 
-  Truck, 
-  CreditCard, 
-  Bell, 
+import {
+  Store,
+  Truck,
+  CreditCard,
+  Bell,
   Share2,
   Save,
   Pencil,
@@ -133,13 +133,13 @@ export default function SettingsPage() {
       const { error } = await supabase
         .from('store_settings')
         .upsert(settings);
-      
+
       if (error) throw error;
-      
+
       if (settings.store_name) {
         setStoreName(settings.store_name);
       }
-      
+
       setSaveStatus({ type: 'success', message: "Settings saved successfully!" });
       setTimeout(() => {
         setSaveStatus(null);
@@ -177,7 +177,7 @@ export default function SettingsPage() {
           .upsert(rateToSave);
 
         if (error) throw error;
-        
+
         await fetchData();
         setIsRateModalOpen(false);
         setEditingRate(null);
@@ -200,7 +200,7 @@ export default function SettingsPage() {
           .from('shipping_rates')
           .delete()
           .eq('id', id);
-        
+
         if (error) throw error;
         setShippingRates(shippingRates.filter(r => r.id !== id));
         setSaveStatus({ type: 'success', message: "Shipping rate deleted successfully!" });
@@ -222,7 +222,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="-m-8 flex" style={{height: 'calc(100vh - 64px)'}}>
+    <div className="-m-8 flex" style={{ height: 'calc(100vh - 64px)' }}>
       {/* Left Tab Nav */}
       <div className="w-[210px] shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-y-auto">
         <div className="px-5 pt-6 pb-4 border-b border-gray-100 shrink-0">
@@ -258,12 +258,12 @@ export default function SettingsPage() {
           {saveStatus && (
             <div className={cn(
               "px-5 py-4 rounded-2xl text-xs font-bold border flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-4 duration-300",
-              saveStatus.type === 'success' 
-                ? "bg-emerald-50/80 border-emerald-100 text-emerald-700" 
+              saveStatus.type === 'success'
+                ? "bg-emerald-50/80 border-emerald-100 text-emerald-700"
                 : "bg-rose-50/80 border-rose-100 text-rose-700"
             )}>
               <span>{saveStatus.message}</span>
-              <button 
+              <button
                 onClick={() => setSaveStatus(null)}
                 className={cn(
                   "p-1 rounded-full transition-colors",
@@ -286,21 +286,21 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Store Name</label>
-                      <input 
-                        type="text" 
-                        value={settings.store_name || ""} 
-                        onChange={(e) => setSettings({...settings, store_name: e.target.value})}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                      <input
+                        type="text"
+                        value={settings.store_name || ""}
+                        onChange={(e) => setSettings({ ...settings, store_name: e.target.value })}
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                         placeholder={storeName || "Store Name"}
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Store Tagline</label>
-                      <input 
-                        type="text" 
-                        value={settings.store_tagline || ""} 
-                        onChange={(e) => setSettings({...settings, store_tagline: e.target.value})}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                      <input
+                        type="text"
+                        value={settings.store_tagline || ""}
+                        onChange={(e) => setSettings({ ...settings, store_tagline: e.target.value })}
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                         placeholder="Effortless Elegance"
                       />
                     </div>
@@ -308,32 +308,32 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Store Email</label>
-                      <input 
-                        type="email" 
-                        value={settings.store_email || ""} 
-                        onChange={(e) => setSettings({...settings, store_email: e.target.value})}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                      <input
+                        type="email"
+                        value={settings.store_email || ""}
+                        onChange={(e) => setSettings({ ...settings, store_email: e.target.value })}
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                         placeholder="hello@lumiere.com"
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Store Phone</label>
-                      <input 
-                        type="tel" 
-                        value={settings.store_phone || ""} 
-                        onChange={(e) => setSettings({...settings, store_phone: e.target.value})}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                      <input
+                        type="tel"
+                        value={settings.store_phone || ""}
+                        onChange={(e) => setSettings({ ...settings, store_phone: e.target.value })}
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                         placeholder="+94 77 123 4567"
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Store Address</label>
-                    <textarea 
-                      rows={3} 
-                      value={settings.store_address || ""} 
-                      onChange={(e) => setSettings({...settings, store_address: e.target.value})}
-                      className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all resize-none" 
+                    <textarea
+                      rows={3}
+                      value={settings.store_address || ""}
+                      onChange={(e) => setSettings({ ...settings, store_address: e.target.value })}
+                      className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all resize-none"
                       placeholder="Enter store address..."
                     />
                   </div>
@@ -351,15 +351,15 @@ export default function SettingsPage() {
                       <span className="text-xs text-text-muted">Temporarily disable customer access to the storefront</span>
                     </div>
                     <label className="switch">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={settings.maintenance_mode}
-                        onChange={(e) => setSettings({...settings, maintenance_mode: e.target.checked})}
+                        onChange={(e) => setSettings({ ...settings, maintenance_mode: e.target.checked })}
                       />
                       <span className="slider"></span>
                     </label>
                   </div>
-                  
+
                   {settings.maintenance_mode && (
                     <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
                       <div className="p-4 bg-orange-50 border border-orange-200 rounded-xl text-orange-800 text-sm font-medium flex items-center gap-3">
@@ -368,11 +368,11 @@ export default function SettingsPage() {
                       </div>
                       <div className="space-y-2">
                         <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Maintenance Message</label>
-                        <textarea 
-                          rows={3} 
-                          value={settings.maintenance_message || ""} 
-                          onChange={(e) => setSettings({...settings, maintenance_message: e.target.value})}
-                          className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all resize-none" 
+                        <textarea
+                          rows={3}
+                          value={settings.maintenance_message || ""}
+                          onChange={(e) => setSettings({ ...settings, maintenance_message: e.target.value })}
+                          className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all resize-none"
                           placeholder="We are currently updating our store. Please check back soon!"
                         />
                         <p className="text-[10px] text-text-muted">This message will be shown to visitors while the store is in maintenance mode.</p>
@@ -391,7 +391,7 @@ export default function SettingsPage() {
                   <input
                     type="text"
                     value={settings.announcement_bar_text || ""}
-                    onChange={(e) => setSettings({...settings, announcement_bar_text: e.target.value})}
+                    onChange={(e) => setSettings({ ...settings, announcement_bar_text: e.target.value })}
                     className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                     placeholder="e.g. Free shipping on orders above Rs.2000 🎉"
                   />
@@ -400,7 +400,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end pt-4">
-                <button 
+                <button
                   onClick={handleSaveSettings}
                   disabled={isSaving}
                   className="flex items-center gap-2 px-6 py-2.5 bg-brand-gold text-white rounded-xl text-sm font-bold shadow-md shadow-brand-gold/20 hover:brightness-110 transition-all disabled:opacity-50"
@@ -426,10 +426,10 @@ export default function SettingsPage() {
                       <span className="text-xs text-text-muted">Offer free shipping based on order total</span>
                     </div>
                     <label className="switch">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={settings.free_shipping_enabled}
-                        onChange={(e) => setSettings({...settings, free_shipping_enabled: e.target.checked})}
+                        onChange={(e) => setSettings({ ...settings, free_shipping_enabled: e.target.checked })}
                       />
                       <span className="slider"></span>
                     </label>
@@ -437,23 +437,23 @@ export default function SettingsPage() {
                   <div className={cn("grid grid-cols-2 gap-6 transition-all duration-300", !settings.free_shipping_enabled && "opacity-50 pointer-events-none")}>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Minimum Order Amount (Rs.)</label>
-                      <input 
-                        type="number" 
-                        value={settings.free_shipping_threshold || ""} 
-                        onChange={(e) => setSettings({...settings, free_shipping_threshold: parseFloat(e.target.value) || 0})}
+                      <input
+                        type="number"
+                        value={settings.free_shipping_threshold || ""}
+                        onChange={(e) => setSettings({ ...settings, free_shipping_threshold: parseFloat(e.target.value) || 0 })}
                         disabled={!settings.free_shipping_enabled}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                         placeholder="2000"
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Free Shipping Label</label>
-                      <input 
-                        type="text" 
-                        value={settings.free_shipping_label || ""} 
-                        onChange={(e) => setSettings({...settings, free_shipping_label: e.target.value})}
+                      <input
+                        type="text"
+                        value={settings.free_shipping_label || ""}
+                        onChange={(e) => setSettings({ ...settings, free_shipping_label: e.target.value })}
                         disabled={!settings.free_shipping_enabled}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                         placeholder="Free delivery on orders above Rs.2000"
                       />
                     </div>
@@ -484,13 +484,13 @@ export default function SettingsPage() {
                           <td className="p-4 text-text-muted">{rate.delivery_time}</td>
                           <td className="p-4">Rs.{(rate.rate || 0).toLocaleString()}</td>
                           <td className="p-4 text-right">
-                            <button 
+                            <button
                               onClick={() => handleEditRate(rate)}
                               className="p-2 text-text-muted hover:text-brand-gold transition-colors"
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleDeleteRate(rate.id)}
                               className="p-2 text-text-muted hover:text-danger transition-colors"
                             >
@@ -503,7 +503,7 @@ export default function SettingsPage() {
                   </table>
                 </div>
                 <div className="p-4 border-t border-gray-100 bg-gray-50">
-                  <button 
+                  <button
                     onClick={handleAddRate}
                     className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-text-primary hover:bg-gray-50 transition-colors flex items-center gap-2"
                   >
@@ -520,10 +520,10 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Cash on Delivery</span>
                     <label className="switch">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={settings.cod_enabled}
-                        onChange={(e) => setSettings({...settings, cod_enabled: e.target.checked})}
+                        onChange={(e) => setSettings({ ...settings, cod_enabled: e.target.checked })}
                       />
                       <span className="slider"></span>
                     </label>
@@ -531,23 +531,23 @@ export default function SettingsPage() {
                   <div className={cn("space-y-6 transition-all duration-300", !settings.cod_enabled && "opacity-50 pointer-events-none")}>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">COD Extra Charge (Rs.)</label>
-                      <input 
-                        type="number" 
-                        value={settings.cod_extra_charge || ""} 
-                        onChange={(e) => setSettings({...settings, cod_extra_charge: parseFloat(e.target.value) || 0})}
+                      <input
+                        type="number"
+                        value={settings.cod_extra_charge || ""}
+                        onChange={(e) => setSettings({ ...settings, cod_extra_charge: parseFloat(e.target.value) || 0 })}
                         disabled={!settings.cod_enabled}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                         placeholder="50"
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Available Above Order Value (Rs.)</label>
-                      <input 
-                        type="number" 
-                        value={settings.cod_min_order || ""} 
-                        onChange={(e) => setSettings({...settings, cod_min_order: parseFloat(e.target.value) || 0})}
+                      <input
+                        type="number"
+                        value={settings.cod_min_order || ""}
+                        onChange={(e) => setSettings({ ...settings, cod_min_order: parseFloat(e.target.value) || 0 })}
                         disabled={!settings.cod_enabled}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                         placeholder="0"
                       />
                     </div>
@@ -555,7 +555,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="flex justify-end pt-4">
-                <button 
+                <button
                   onClick={handleSaveSettings}
                   disabled={isSaving}
                   className="flex items-center gap-2 px-6 py-2.5 bg-brand-gold text-white rounded-xl text-sm font-bold shadow-md shadow-brand-gold/20 hover:brightness-110 transition-all disabled:opacity-50"
@@ -582,13 +582,13 @@ export default function SettingsPage() {
                         <span className="text-sm font-bold text-text-primary">{method.name}</span>
                       </div>
                       <label className="switch">
-                        <input 
-                          type="checkbox" 
-                          checked={method.active} 
+                        <input
+                          type="checkbox"
+                          checked={method.active}
                           onChange={(e) => {
                             const updated = [...settings.payment_methods];
                             updated[index].active = e.target.checked;
-                            setSettings({...settings, payment_methods: updated});
+                            setSettings({ ...settings, payment_methods: updated });
                           }}
                         />
                         <span className="slider"></span>
@@ -602,7 +602,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end pt-4">
-                <button 
+                <button
                   onClick={handleSaveSettings}
                   disabled={isSaving}
                   className="flex items-center gap-2 px-6 py-2.5 bg-brand-gold text-white rounded-xl text-sm font-bold shadow-md shadow-brand-gold/20 hover:brightness-110 transition-all disabled:opacity-50"
@@ -629,20 +629,20 @@ export default function SettingsPage() {
                         <span className="text-xs text-text-muted">{item.desc}</span>
                       </div>
                       <label className="switch">
-                        <input 
-                          type="checkbox" 
-                          checked={item.active} 
+                        <input
+                          type="checkbox"
+                          checked={item.active}
                           onChange={(e) => {
                             const updated = [...settings.notifications_admin];
                             updated[index].active = e.target.checked;
-                            setSettings({...settings, notifications_admin: updated});
+                            setSettings({ ...settings, notifications_admin: updated });
                           }}
                         />
                         <span className="slider"></span>
                       </label>
                     </div>
                   ))}
-                  
+
                   <div className="pt-4 border-t border-gray-100">
                     <div className="flex items-center justify-between mb-4">
                       <div>
@@ -650,22 +650,22 @@ export default function SettingsPage() {
                         <span className="text-xs text-text-muted">Trigger notification when stock falls below this number</span>
                       </div>
                       <label className="switch">
-                        <input 
-                          type="checkbox" 
-                          checked={settings.low_stock_enabled} 
-                          onChange={(e) => setSettings({...settings, low_stock_enabled: e.target.checked})}
+                        <input
+                          type="checkbox"
+                          checked={settings.low_stock_enabled}
+                          onChange={(e) => setSettings({ ...settings, low_stock_enabled: e.target.checked })}
                         />
                         <span className="slider"></span>
                       </label>
                     </div>
                     <div className={`flex items-center gap-4 ml-4 pl-4 border-l-2 border-gray-100 transition-opacity duration-200 ${!settings.low_stock_enabled ? 'opacity-50 pointer-events-none' : ''}`}>
                       <span className="text-sm text-text-secondary">Alert threshold:</span>
-                      <input 
-                        type="number" 
-                        value={settings.low_stock_threshold || 0} 
-                        onChange={(e) => setSettings({...settings, low_stock_threshold: parseInt(e.target.value) || 0})}
+                      <input
+                        type="number"
+                        value={settings.low_stock_threshold || 0}
+                        onChange={(e) => setSettings({ ...settings, low_stock_threshold: parseInt(e.target.value) || 0 })}
                         disabled={!settings.low_stock_enabled}
-                        className="w-24 px-3 py-1.5 bg-gray-50 border border-transparent rounded-lg text-sm text-center focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                        className="w-24 px-3 py-1.5 bg-gray-50 border border-transparent rounded-lg text-sm text-center focus:bg-white focus:border-brand-gold outline-none transition-all"
                       />
                       <span className="text-sm text-text-secondary">units</span>
                     </div>
@@ -685,13 +685,13 @@ export default function SettingsPage() {
                         <span className="text-xs text-text-muted">{item.desc}</span>
                       </div>
                       <label className="switch">
-                        <input 
-                          type="checkbox" 
-                          checked={item.active} 
+                        <input
+                          type="checkbox"
+                          checked={item.active}
                           onChange={(e) => {
                             const updated = [...settings.notifications_customer];
                             updated[index].active = e.target.checked;
-                            setSettings({...settings, notifications_customer: updated});
+                            setSettings({ ...settings, notifications_customer: updated });
                           }}
                         />
                         <span className="slider"></span>
@@ -702,7 +702,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end pt-4">
-                <button 
+                <button
                   onClick={handleSaveSettings}
                   disabled={isSaving}
                   className="flex items-center gap-2 px-6 py-2.5 bg-brand-gold text-white rounded-xl text-sm font-bold shadow-md shadow-brand-gold/20 hover:brightness-110 transition-all disabled:opacity-50"
@@ -729,25 +729,25 @@ export default function SettingsPage() {
                         {social.icon}
                       </div>
                       <div className="w-32 text-sm font-bold text-text-primary">{social.label}</div>
-                      <input 
-                        type="text" 
-                        value={social.value || ""} 
+                      <input
+                        type="text"
+                        value={social.value || ""}
                         onChange={(e) => {
                           const updated = [...settings.social_links];
                           updated[index].value = e.target.value;
-                          setSettings({...settings, social_links: updated});
+                          setSettings({ ...settings, social_links: updated });
                         }}
                         placeholder={`Enter ${social.label} URL...`}
-                        className="flex-1 px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all" 
+                        className="flex-1 px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
                       />
                       <label className="switch ml-2">
-                        <input 
-                          type="checkbox" 
-                          checked={social.active} 
+                        <input
+                          type="checkbox"
+                          checked={social.active}
                           onChange={(e) => {
                             const updated = [...settings.social_links];
                             updated[index].active = e.target.checked;
-                            setSettings({...settings, social_links: updated});
+                            setSettings({ ...settings, social_links: updated });
                           }}
                         />
                         <span className="slider"></span>
@@ -764,15 +764,15 @@ export default function SettingsPage() {
                 <div className="p-6 flex flex-wrap gap-8">
                   {(settings.share_buttons || []).map((btn, index) => (
                     <label key={btn.label} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        checked={btn.active} 
+                      <input
+                        type="checkbox"
+                        checked={btn.active}
                         onChange={(e) => {
                           const updated = [...settings.share_buttons];
                           updated[index].active = e.target.checked;
-                          setSettings({...settings, share_buttons: updated});
+                          setSettings({ ...settings, share_buttons: updated });
                         }}
-                        className="w-4 h-4 rounded text-brand-gold focus:ring-brand-gold" 
+                        className="w-4 h-4 rounded text-brand-gold focus:ring-brand-gold"
                       />
                       {btn.label}
                     </label>
@@ -780,7 +780,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="flex justify-end pt-4">
-                <button 
+                <button
                   onClick={handleSaveSettings}
                   disabled={isSaving}
                   className="flex items-center gap-2 px-6 py-2.5 bg-brand-gold text-white rounded-xl text-sm font-bold shadow-md shadow-brand-gold/20 hover:brightness-110 transition-all disabled:opacity-50"
@@ -794,88 +794,88 @@ export default function SettingsPage() {
 
         </div>
 
-      {/* Shipping Rate Modal */}
-      {isRateModalOpen && editingRate && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div 
-            className="absolute inset-0 bg-brand-sidebar/40 backdrop-blur-sm"
-            onClick={() => setIsRateModalOpen(false)}
-          ></div>
-          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <h3 className="text-lg font-bold text-text-primary">
-                {editingRate.id ? "Edit Shipping Rate" : "Add Shipping Rate"}
-              </h3>
-              <button 
-                onClick={() => setIsRateModalOpen(false)}
-                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-text-muted"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Zone Name</label>
-                <input 
-                  type="text" 
-                  value={editingRate.name || ""}
-                  onChange={(e) => setEditingRate({ ...editingRate, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                  placeholder="e.g. Standard Delivery"
-                />
+        {/* Shipping Rate Modal */}
+        {isRateModalOpen && editingRate && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div
+              className="absolute inset-0 bg-brand-sidebar/40 backdrop-blur-sm"
+              onClick={() => setIsRateModalOpen(false)}
+            ></div>
+            <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                <h3 className="text-lg font-bold text-text-primary">
+                  {editingRate.id ? "Edit Shipping Rate" : "Add Shipping Rate"}
+                </h3>
+                <button
+                  onClick={() => setIsRateModalOpen(false)}
+                  className="p-2 hover:bg-gray-200 rounded-full transition-colors text-text-muted"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Min Order (Rs.)</label>
-                <input 
-                  type="number" 
-                  value={editingRate.min_order ?? 0}
-                  onChange={(e) => setEditingRate({ ...editingRate, min_order: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                />
+              <div className="p-8 space-y-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Zone Name</label>
+                  <input
+                    type="text"
+                    value={editingRate.name || ""}
+                    onChange={(e) => setEditingRate({ ...editingRate, name: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                    placeholder="e.g. Standard Delivery"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Min Order (Rs.)</label>
+                  <input
+                    type="number"
+                    value={editingRate.min_order ?? 0}
+                    onChange={(e) => setEditingRate({ ...editingRate, min_order: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Estimated Delivery Time</label>
+                  <input
+                    type="text"
+                    value={editingRate.delivery_time || ""}
+                    onChange={(e) => setEditingRate({ ...editingRate, delivery_time: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                    placeholder="e.g. 3-5 business days"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Rate (Rs.)</label>
+                  <input
+                    type="number"
+                    value={editingRate.rate ?? 0}
+                    onChange={(e) => setEditingRate({ ...editingRate, rate: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Estimated Delivery Time</label>
-                <input 
-                  type="text" 
-                  value={editingRate.delivery_time || ""}
-                  onChange={(e) => setEditingRate({ ...editingRate, delivery_time: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                  placeholder="e.g. 3-5 business days"
-                />
+              <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-4">
+                <button
+                  onClick={() => setIsRateModalOpen(false)}
+                  className="flex-1 px-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-text-muted hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveRate}
+                  disabled={isSaving}
+                  className="flex-[2] px-6 py-3 bg-brand-gold text-white rounded-xl text-sm font-bold hover:brightness-110 transition-all shadow-lg shadow-brand-gold/20 disabled:opacity-50"
+                >
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Rate"}
+                </button>
               </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Rate (Rs.)</label>
-                <input 
-                  type="number" 
-                  value={editingRate.rate ?? 0}
-                  onChange={(e) => setEditingRate({ ...editingRate, rate: parseInt(e.target.value) || 0 })}
-                  className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                />
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-4">
-              <button 
-                onClick={() => setIsRateModalOpen(false)}
-                className="flex-1 px-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-bold text-text-muted hover:bg-gray-100 transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleSaveRate}
-                disabled={isSaving}
-                className="flex-[2] px-6 py-3 bg-brand-gold text-white rounded-xl text-sm font-bold hover:brightness-110 transition-all shadow-lg shadow-brand-gold/20 disabled:opacity-50"
-              >
-                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Rate"}
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       </div>
     </div>
