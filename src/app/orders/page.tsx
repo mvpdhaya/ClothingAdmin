@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, Suspense, Fragment, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { 
   Search, 
@@ -116,9 +117,19 @@ function OrdersList() {
     setLoading(true);
     const { data, error } = await supabase
       .from("orders")
-      .select("*")
+      .select("*, customer:customers(full_name, email), address:addresses(*)")
       .order("created_at", { ascending: false });
-    if (!error && data) setOrders(data as Order[]);
+    if (!error && data) {
+      // Supabase join for single relation might still return array if not handled perfectly by types
+      // but renaming to singular helps. 
+      // Sometimes it returns address as an array [ { ... } ], need to handle that.
+      const formattedOrders = data.map((order: any) => ({
+        ...order,
+        customer: Array.isArray(order.customer) ? order.customer[0] : order.customer,
+        address: Array.isArray(order.address) ? order.address[0] : order.address
+      }));
+      setOrders(formattedOrders as Order[]);
+    }
     setLoading(false);
   }
 
@@ -130,10 +141,12 @@ function OrdersList() {
     return orders.filter(order => {
       const matchesTab = activeTab === "All" || order.status === activeTab;
       const matchesPayment = paymentFilter === "All" || order.payment === paymentFilter;
+      const customer_name = order.customer?.full_name || order.customer_name || "";
+      const customer_email = order.customer?.email || order.customer_email || "";
       const matchesSearch =
         order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.customer_email.toLowerCase().includes(searchQuery.toLowerCase());
+        customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        customer_email.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesTab && matchesPayment && matchesSearch;
     });
   }, [orders, activeTab, searchQuery, paymentFilter]);
@@ -188,17 +201,26 @@ function OrdersList() {
       return `"${str}"`;
     };
 
-    const rows = filteredOrders.map(order => [
-      escape(order.id),
-      escape(order.customer_name),
-      escape(order.customer_email),
-      escape(order.address),
-      escape(order.item_count),
-      escape(order.total),
-      escape(order.payment),
-      escape(order.status),
-      escape(formatDate(order.created_at))
-    ].join(","));
+    const rows = filteredOrders.map(order => {
+      const customer_name = order.customer?.full_name || order.customer_name || "N/A";
+      const customer_email = order.customer?.email || order.customer_email || "N/A";
+      const address = order.address 
+        ? `${order.address.line1}, ${order.address.city}` 
+        : (typeof order.address === 'string' ? order.address : "N/A");
+      const total = typeof order.total === 'number' ? `Rs.${order.total.toLocaleString()}` : order.total;
+      
+      return [
+        escape(order.id),
+        escape(customer_name),
+        escape(customer_email),
+        escape(address),
+        escape(order.item_count),
+        escape(total),
+        escape(order.payment),
+        escape(order.status),
+        escape(formatDate(order.created_at))
+      ].join(",");
+    });
 
     const csvContent = [headers.join(","), ...rows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -219,7 +241,17 @@ function OrdersList() {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const addressLines = selectedOrder.address ? selectedOrder.address.split('\n') : [];
+    const customer_name = selectedOrder.customer?.full_name || selectedOrder.customer_name || "Customer";
+    const address_str = selectedOrder.address 
+      ? [
+          selectedOrder.address.line1,
+          selectedOrder.address.line2,
+          `${selectedOrder.address.city}, ${selectedOrder.address.province}`,
+          selectedOrder.address.postal_code
+        ].filter(Boolean).join('\n')
+      : (typeof selectedOrder.address === 'string' ? selectedOrder.address : "");
+
+    const addressLines = address_str ? address_str.split('\n') : [];
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -321,7 +353,7 @@ function OrdersList() {
                 SHIP TO:
               </div>
               <div style="font-size: 20px; font-weight: 700; margin-bottom: 8px;">
-                ${selectedOrder.customer_name}
+                ${selectedOrder.customer?.full_name || selectedOrder.customer_name}
               </div>
               <div style="font-size: 14px; line-height: 1.6; font-weight: 500;">
                 ${addressLines.map(line => `<div>${line}</div>`).join('')}
@@ -783,8 +815,8 @@ function OrdersList() {
                             <User className="w-4 h-4" />
                           </div>
                           <div className="flex flex-col">
-                            <span className="font-bold text-text-primary">{order.customer_name}</span>
-                            <span className="text-[10px] text-text-muted font-bold truncate max-w-[120px]">{order.customer_email}</span>
+                            <span className="font-bold text-text-primary">{order.customer?.full_name || order.customer_name}</span>
+                            <span className="text-[10px] text-text-muted font-bold truncate max-w-[120px]">{order.customer?.email || order.customer_email}</span>
                           </div>
                         </div>
                       </td>
@@ -794,7 +826,9 @@ function OrdersList() {
                           <span className="text-xs font-bold text-text-secondary">{order.item_count} item{order.item_count !== 1 ? "s" : ""}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-bold text-text-primary">{order.total}</td>
+                      <td className="px-6 py-4 font-bold text-text-primary">
+                        {typeof order.total === 'number' ? `Rs.${order.total.toLocaleString()}` : order.total}
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-text-secondary">
                           <CreditCard className="w-3.5 h-3.5" />
@@ -854,15 +888,15 @@ function OrdersList() {
       </div>
 
       {/* Order Detail Modal */}
-      {selectedOrder && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6 pointer-events-none">
+      {selectedOrder && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 pointer-events-none">
           <div
             className="absolute inset-0 bg-brand-sidebar/40 backdrop-blur-sm transition-opacity pointer-events-auto"
             onClick={() => setSelectedOrderId(null)}
             onWheel={(e) => e.preventDefault()}
-          ></div>
+          />
           <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl animate-fade-in flex flex-col pointer-events-auto overflow-hidden">
-          <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 gap-4 flex-shrink-0">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 gap-4 flex-shrink-0">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-lg font-bold text-text-primary whitespace-nowrap">Order Details</h3>
@@ -871,18 +905,29 @@ function OrdersList() {
                 <p className="text-xs text-text-muted font-bold uppercase tracking-widest mt-1">{formatDate(selectedOrder.created_at)}</p>
               </div>
               <button onClick={() => setSelectedOrderId(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors shrink-0">
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 text-text-muted" />
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-8">
               {/* Shipping Address */}
               <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 space-y-3">
-                <div className="flex items-center gap-2 text-brand-gold">
-                  <MapPin className="w-4 h-4" />
-                  <h4 className="text-[10px] font-bold tracking-widest uppercase">Shipping Address</h4>
+                <div className="flex items-center gap-2 mb-2">
+                  <MapPin className="w-3.5 h-3.5 text-text-muted" />
+                  <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Shipping Address</span>
                 </div>
-                <p className="text-sm font-bold text-text-primary leading-relaxed">{selectedOrder.address}</p>
+                <div className="text-sm font-semibold text-text-primary leading-relaxed">
+                  {selectedOrder.address && typeof selectedOrder.address !== 'string' ? (
+                    <>
+                      <div>{selectedOrder.address.line1}</div>
+                      {selectedOrder.address.line2 && <div>{selectedOrder.address.line2}</div>}
+                      <div>{selectedOrder.address.city}, {selectedOrder.address.province}</div>
+                      <div>{selectedOrder.address.postal_code}</div>
+                    </>
+                  ) : (
+                    <div className="whitespace-pre-line">{String(selectedOrder.address || "N/A")}</div>
+                  )}
+                </div>
               </div>
 
               {/* Order Status Timeline */}
@@ -978,8 +1023,8 @@ function OrdersList() {
               <div className="grid grid-cols-2 gap-6 border-y border-gray-100 py-6">
                 <div>
                   <h4 className="text-[10px] font-bold text-text-muted tracking-widest uppercase mb-2">Customer Info</h4>
-                  <p className="text-sm font-bold text-text-primary">{selectedOrder.customer_name}</p>
-                  <p className="text-xs text-text-secondary mt-1">{selectedOrder.customer_email}</p>
+                  <p className="text-sm font-bold text-text-primary">{selectedOrder.customer?.full_name || selectedOrder.customer_name || "N/A"}</p>
+                  <p className="text-xs text-text-secondary mt-1">{selectedOrder.customer?.email || selectedOrder.customer_email || "N/A"}</p>
                 </div>
                 <div>
                   <h4 className="text-[10px] font-bold text-text-muted tracking-widest uppercase mb-2">Payment Details</h4>
@@ -994,9 +1039,21 @@ function OrdersList() {
                   <span>Items Ordered</span>
                   <span>{selectedOrder.item_count} item{selectedOrder.item_count !== 1 ? "s" : ""}</span>
                 </div>
-                <div className="flex justify-between text-lg pt-1">
+                <div className="flex justify-between text-sm pt-2 text-gray-400">
+                  <span>Subtotal</span>
+                  <span className="font-bold">Rs.{(selectedOrder.subtotal || 0).toLocaleString()}</span>
+                </div>
+                {selectedOrder.discount_amount > 0 && (
+                  <div className="flex justify-between text-sm text-rose-400">
+                    <span>Discount</span>
+                    <span className="font-bold">-Rs.{selectedOrder.discount_amount.toLocaleString()}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-lg pt-3 mt-1 border-t border-gray-800">
                   <span className="font-bold">Total Amount</span>
-                  <span className="font-bold text-brand-gold">{selectedOrder.total}</span>
+                  <span className="font-bold text-brand-gold">
+                    {typeof selectedOrder.total === 'number' ? `Rs.${selectedOrder.total.toLocaleString()}` : selectedOrder.total}
+                  </span>
                 </div>
               </div>
 
@@ -1032,7 +1089,6 @@ function OrdersList() {
                 <Printer className="w-3.5 h-3.5" />
                 Print Shipping Label
               </button>
-
             </div>
 
             {/* Action Bar — simple close */}
@@ -1041,11 +1097,12 @@ function OrdersList() {
                 onClick={() => setSelectedOrderId(null)}
                 className="w-full px-4 py-3 bg-brand-gold text-white rounded-xl text-xs font-bold hover:brightness-110 transition-all shadow-lg shadow-brand-gold/20 uppercase tracking-widest flex items-center justify-center gap-2"
               >
-                Close
+                Close Order
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

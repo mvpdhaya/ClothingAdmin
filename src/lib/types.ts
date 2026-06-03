@@ -1,15 +1,29 @@
 export interface Order {
   id: string;
-  customer_name: string;
-  customer_email: string;
-  address: string;
   item_count: number;
-  items: string[];
-  total: string;
+  total: number | string;
   payment: string;
   status: string;
   created_at: string;
+  customer_id: string;
+  address_id: string;
+  subtotal: number;
+  discount_amount: number;
+  shipping_amount: number;
+  coupon_code?: string;
+  tracking_id?: string;
+  notes?: string;
+  updated_at: string;
+  // Joined data
+  customer?: {
+    full_name: string;
+    email: string;
+  };
+  address?: Address;
   order_items?: OrderItem[];
+  // Legacy support or fallback
+  customer_name?: string;
+  customer_email?: string;
 }
 
 export interface OrderItem {
@@ -46,13 +60,39 @@ export interface Product {
 
 export interface Customer {
   id: string;
-  name: string;
+  full_name: string;
   email: string;
   phone?: string;
-  orders: number;
-  spent: string;
-  joined: string;
-  avatar: string;
+  avatar_url?: string;
+  provider?: string;
+  whatsapp_opted_in?: boolean;
+  total_orders: number;
+  total_spent: number | string;
+  last_order_at?: string;
+  status: string;
+  created_at: string;
+  last_login_at?: string;
+  // Legacy support
+  name?: string;
+  spent?: string | number;
+  joined?: string;
+  orders?: number;
+}
+
+export interface Address {
+  id: string;
+  customer_id: string;
+  label: string;
+  full_name: string;
+  phone: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  district: string;
+  province: string;
+  postal_code: string;
+  is_default: boolean;
+  created_at: string;
 }
 
 export interface Notification {

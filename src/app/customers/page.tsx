@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   Search,
@@ -62,21 +63,31 @@ export default function CustomersPage() {
     const { data, error } = await supabase
       .from("customers")
       .select("*")
-      .order("joined", { ascending: false });
+      .order("created_at", { ascending: false });
     if (!error && data) setCustomerList(data as Customer[]);
     setLoading(false);
   }
 
   const filteredCustomers = customerList.filter(cus => {
-    const query = searchQuery.toLowerCase();
+    if (!cus) return false;
+    const query = (searchQuery || "").toLowerCase();
+    const full_name = (cus.full_name || cus.name || "").toLowerCase();
+    const email = (cus.email || "").toLowerCase();
+    const id = (cus.id || "").toLowerCase();
+    
     const matchesSearch =
-      cus.name.toLowerCase().includes(query) ||
-      cus.email.toLowerCase().includes(query) ||
-      cus.id.toLowerCase().includes(query);
+      full_name.includes(query) ||
+      email.includes(query) ||
+      id.includes(query);
 
-    const spentValue = parseInt(cus.spent.replace(/Rs\.?/i, "").replace(/[^0-9]/g, "")) || 0;
-    const matchesSpent = !minSpent || spentValue >= parseInt(minSpent);
-    const matchesOrders = !minOrders || cus.orders >= parseInt(minOrders);
+    const rawSpent = cus.total_spent ?? (cus as any).spent ?? 0;
+    const spentValue = typeof rawSpent === 'number' 
+      ? rawSpent 
+      : parseFloat(String(rawSpent).replace(/Rs\.?/i, "").replace(/,/g, "")) || 0;
+      
+    const matchesSpent = !minSpent || spentValue >= parseFloat(minSpent);
+    const total_orders = cus.total_orders ?? (cus as any).orders ?? 0;
+    const matchesOrders = !minOrders || total_orders >= parseInt(minOrders);
 
     return matchesSearch && matchesSpent && matchesOrders;
   });
@@ -238,18 +249,24 @@ export default function CustomersPage() {
                     >
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full border border-gray-200 flex-shrink-0 bg-gray-50 flex items-center justify-center text-text-muted">
-                            <User className="w-5 h-5" />
+                          <div className="w-10 h-10 rounded-full border border-gray-200 flex-shrink-0 bg-gray-50 flex items-center justify-center text-text-muted overflow-hidden">
+                            {(cus.avatar_url || (cus as any).avatar) ? (
+                              <img src={cus.avatar_url || (cus as any).avatar} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <User className="w-5 h-5" />
+                            )}
                           </div>
                           <div className="flex flex-col">
-                            <span className="font-bold text-text-primary">{cus.name}</span>
+                            <span className="font-bold text-text-primary">{cus.full_name || cus.name}</span>
                             <span className="text-[10px] text-text-muted font-bold">{cus.email}</span>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-text-secondary font-semibold">{cus.orders} orders</td>
-                      <td className="px-6 py-4 font-bold text-text-primary">{cus.spent}</td>
-                      <td className="px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest">{cus.joined}</td>
+                      <td className="px-6 py-4 text-text-secondary font-semibold">{cus.total_orders ?? cus.orders} orders</td>
+                      <td className="px-6 py-4 font-bold text-text-primary">
+                        {typeof cus.total_spent === 'number' ? `Rs.${cus.total_spent.toLocaleString()}` : (cus.total_spent || cus.spent)}
+                      </td>
+                      <td className="px-6 py-4 text-[10px] font-bold text-text-muted uppercase tracking-widest">{cus.created_at || cus.joined}</td>
                       <td className="px-6 py-4 text-right">
                         <button className="p-2 text-text-muted hover:text-brand-gold hover:bg-white rounded-lg transition-all shadow-sm border border-transparent hover:border-gray-100">
                           <Eye className="w-4 h-4" />
@@ -284,37 +301,53 @@ export default function CustomersPage() {
         )}
       </div>
 
-      {/* Customer Profile Drawer */}
-      {selectedCustomer && (
-        <>
+      {/* Customer Profile Modal */}
+      {selectedCustomer && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 pointer-events-none">
           <div
-            className="fixed inset-0 bg-brand-sidebar/40 backdrop-blur-sm z-50 transition-opacity"
+            className="absolute inset-0 bg-brand-sidebar/40 backdrop-blur-sm pointer-events-auto"
             onClick={() => setSelectedCustomer(null)}
-          ></div>
-          <div className="fixed top-0 right-0 h-screen w-full sm:w-[540px] bg-white z-[60] shadow-2xl drawer-animate flex flex-col">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="text-lg font-bold text-text-primary">Customer Profile</h3>
-              <button onClick={() => setSelectedCustomer(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-                <X className="w-5 h-5" />
+          />
+          <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl animate-fade-in flex flex-col pointer-events-auto overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 gap-4 flex-shrink-0">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-lg font-bold text-text-primary whitespace-nowrap">Customer Profile</h3>
+                  <span className="font-mono text-[10px] font-bold text-brand-gold bg-brand-gold/10 px-2 py-0.5 rounded-full truncate max-w-[160px]">ID: {selectedCustomer.id}</span>
+                </div>
+                <p className="text-xs text-text-muted font-bold uppercase tracking-widest mt-1">
+                  Member since {selectedCustomer.created_at ? new Date(selectedCustomer.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : ((selectedCustomer as any).joined || "N/A")}
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedCustomer(null)} 
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors shrink-0"
+              >
+                <X className="w-5 h-5 text-text-muted" />
               </button>
             </div>
 
+            {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-6 space-y-8">
               <div className="flex items-center gap-6">
-                <div className="w-24 h-24 rounded-3xl border-4 border-white shadow-xl flex-shrink-0 bg-gray-50 flex items-center justify-center text-text-muted">
-                  <User className="w-12 h-12" />
+                <div className="w-24 h-24 rounded-3xl border-4 border-white shadow-xl flex-shrink-0 bg-gray-50 flex items-center justify-center text-text-muted overflow-hidden">
+                  {(selectedCustomer.avatar_url || (selectedCustomer as any).avatar) ? (
+                    <img src={selectedCustomer.avatar_url || (selectedCustomer as any).avatar} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-12 h-12" />
+                  )}
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-xl font-bold text-text-primary">{selectedCustomer.name}</h4>
-                    <BadgeCheck className="w-5 h-5 text-brand-gold" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-xl font-bold text-text-primary">{selectedCustomer.full_name || selectedCustomer.name}</h4>
+                    <BadgeCheck className="w-5 h-5 text-brand-gold flex-shrink-0" />
                   </div>
-                  <p className="text-sm text-text-muted mt-1">{selectedCustomer.id}</p>
                   <div className="flex gap-2 mt-4">
-                    <button className="p-2 bg-gray-50 rounded-lg text-text-muted hover:text-brand-gold transition-colors">
+                    <button className="p-2 bg-gray-50 rounded-lg text-text-muted hover:text-brand-gold transition-colors border border-gray-100 shadow-sm">
                       <Mail className="w-4 h-4" />
                     </button>
-                    <button className="p-2 bg-gray-50 rounded-lg text-text-muted hover:text-brand-gold transition-colors">
+                    <button className="p-2 bg-gray-50 rounded-lg text-text-muted hover:text-brand-gold transition-colors border border-gray-100 shadow-sm">
                       <Phone className="w-4 h-4" />
                     </button>
                   </div>
@@ -322,25 +355,29 @@ export default function CustomersPage() {
               </div>
 
               <div className="grid grid-cols-3 gap-4">
-                <div className="card bg-gray-50 border-none p-4">
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-center shadow-sm">
                   <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Total Spent</p>
-                  <h5 className="text-lg font-bold text-text-primary">{selectedCustomer.spent}</h5>
+                  <h5 className="text-base font-bold text-text-primary">
+                    {typeof selectedCustomer.total_spent === 'number' ? `Rs.${selectedCustomer.total_spent.toLocaleString()}` : ((selectedCustomer as any).spent || "Rs.0")}
+                  </h5>
                 </div>
-                <div className="card bg-gray-50 border-none p-4">
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-center shadow-sm">
                   <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Orders</p>
-                  <h5 className="text-lg font-bold text-text-primary">{selectedCustomer.orders}</h5>
+                  <h5 className="text-base font-bold text-text-primary">{selectedCustomer.total_orders ?? (selectedCustomer as any).orders ?? 0}</h5>
                 </div>
-                <div className="card bg-gray-50 border-none p-4">
-                  <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Joined</p>
-                  <h5 className="text-sm font-bold text-text-primary mt-1">{selectedCustomer.joined}</h5>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 text-center shadow-sm">
+                  <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Joined Date</p>
+                  <h5 className="text-[10px] font-bold text-text-primary truncate">
+                    {selectedCustomer.created_at ? new Date(selectedCustomer.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ((selectedCustomer as any).joined || "N/A")}
+                  </h5>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <h4 className="text-[10px] font-bold text-text-muted tracking-widest uppercase">Contact Information</h4>
-                <div className="card border-gray-100 space-y-4">
+                <div className="p-5 rounded-2xl border border-gray-100 space-y-4 bg-white shadow-sm">
                   <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center text-text-muted">
+                    <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center text-text-muted border border-gray-100">
                       <Mail className="w-4 h-4" />
                     </div>
                     <div>
@@ -350,7 +387,7 @@ export default function CustomersPage() {
                   </div>
                   {selectedCustomer.phone && (
                     <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center text-text-muted">
+                      <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center text-text-muted border border-gray-100">
                         <Phone className="w-4 h-4" />
                       </div>
                       <div>
@@ -359,34 +396,37 @@ export default function CustomersPage() {
                       </div>
                     </div>
                   )}
-                  <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center text-text-muted">
-                      <Calendar className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Member Since</p>
-                      <p className="text-sm font-bold text-text-primary">{selectedCustomer.joined}</p>
-                    </div>
-                  </div>
                 </div>
               </div>
 
+              {/* Order Activity Summary */}
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-[10px] font-bold text-text-muted tracking-widest uppercase">Recent Orders</h4>
-                  <Link href={`/orders?customer=${encodeURIComponent(selectedCustomer.name)}`} className="text-[10px] font-bold text-brand-gold hover:underline">VIEW ALL</Link>
+                  <h4 className="text-[10px] font-bold text-text-muted tracking-widest uppercase">Shopping Activity</h4>
+                  <Link href={`/orders?customer=${encodeURIComponent(selectedCustomer.full_name || selectedCustomer.name || "")}`} className="text-[10px] font-bold text-brand-gold hover:underline uppercase tracking-widest flex items-center gap-1">
+                    View All Orders <ChevronRight className="w-3 h-3" />
+                  </Link>
                 </div>
-                <div className="flex flex-col items-center justify-center py-8 bg-gray-50 rounded-xl text-center">
-                  <ShoppingBag className="w-8 h-8 text-text-muted mb-2" />
-                  <p className="text-sm font-bold text-text-primary">{selectedCustomer.orders} orders placed</p>
-                  <p className="text-xs text-text-muted mt-1">View all orders in the Orders page</p>
+                <div className="flex flex-col items-center justify-center py-10 bg-gray-900 rounded-2xl text-center shadow-xl text-white">
+                  <ShoppingBag className="w-10 h-10 text-brand-gold mb-3" />
+                  <p className="text-lg font-bold">{(selectedCustomer.total_orders ?? (selectedCustomer as any).orders ?? 0)} orders placed</p>
+                  <p className="text-xs text-gray-400 mt-1 max-w-[240px]">This customer has been with us since {selectedCustomer.created_at ? new Date(selectedCustomer.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : ((selectedCustomer as any).joined || "")}</p>
                 </div>
               </div>
             </div>
 
-
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50/50 flex-shrink-0">
+              <button
+                onClick={() => setSelectedCustomer(null)}
+                className="w-full px-4 py-3 bg-brand-gold text-white rounded-xl text-xs font-bold hover:brightness-110 transition-all shadow-lg shadow-brand-gold/20 uppercase tracking-widest"
+              >
+                Close Profile
+              </button>
+            </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
 
 
