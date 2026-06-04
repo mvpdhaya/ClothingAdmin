@@ -855,45 +855,26 @@ export default function HomepageBuilderPage() {
                     const buttonTypes = (editingSection.buttonType || "").split(" | ");
 
                     const updateField = (field: 'title' | 'subtitle' | 'buttonText' | 'buttonLink' | 'alignment' | 'imageUrl' | 'buttonType', val: string) => {
-                      if (isDouble) {
-                        const idx = tabIndex;
-                        if (field === 'title') {
-                          const arr = [...titles];
-                          while (arr.length < 2) arr.push("");
+                      setEditingSection(prev => {
+                        if (!prev) return prev;
+                        if (isDouble) {
+                          const idx = tabIndex;
+                          const currentRawValue = (prev[field as keyof Section] as string) || "";
+                          const arr = currentRawValue.split(" | ");
+                          
+                          // Ensure we have at least 2 slots for double banner
+                          while (arr.length < 2) {
+                            if (field === 'alignment') arr.push("left");
+                            else if (field === 'buttonType') arr.push("sale");
+                            else arr.push("");
+                          }
+                          
                           arr[idx] = val;
-                          setEditingSection({ ...editingSection, title: arr.join(" | ") });
-                        } else if (field === 'subtitle') {
-                          const arr = [...subtitles];
-                          while (arr.length < 2) arr.push("");
-                          arr[idx] = val;
-                          setEditingSection({ ...editingSection, subtitle: arr.join(" | ") });
-                        } else if (field === 'buttonText') {
-                          const arr = [...buttons];
-                          while (arr.length < 2) arr.push("");
-                          arr[idx] = val;
-                          setEditingSection({ ...editingSection, buttonText: arr.join(" | ") });
-                        } else if (field === 'buttonLink') {
-                          const arr = [...links];
-                          while (arr.length < 2) arr.push("");
-                          arr[idx] = val;
-                          setEditingSection({ ...editingSection, buttonLink: arr.join(" | ") });
-                        } else if (field === 'alignment') {
-                          const arr = [...alignments];
-                          while (arr.length < 2) arr.push("left");
-                          arr[idx] = val;
-                          setEditingSection({ ...editingSection, alignment: arr.join(" | ") as any });
-                        } else if (field === 'imageUrl') {
-                          const arr = [...images];
-                          while (arr.length < 2) arr.push("");
-                          arr[idx] = val;
-                          setEditingSection({ ...editingSection, imageUrl: arr.join(" | ") });
-                        } else if (field === 'buttonType') {
-                          const arr = [...buttonTypes];
-                          while (arr.length < 2) arr.push("sale");
-                          arr[idx] = val;
-                          setEditingSection({ ...editingSection, buttonType: arr.join(" | ") });
+                          return { ...prev, [field]: arr.join(" | ") };
+                        } else {
+                          return { ...prev, [field]: val };
                         }
-                      }
+                      });
                     };
 
                     const currentTitle = isDouble ? (titles[tabIndex] || "") : (editingSection.title || "");
@@ -977,7 +958,7 @@ export default function HomepageBuilderPage() {
                         </div>
 
                         {/* Button Text & Link */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4">
                           <div className="space-y-2">
                             <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Text</label>
                             <input 
@@ -994,18 +975,6 @@ export default function HomepageBuilderPage() {
                               placeholder="e.g. Shop Now"
                             />
                           </div>
-                          {isDouble && (
-                            <div className="space-y-2">
-                              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Link</label>
-                              <input 
-                                type="text" 
-                                value={currentButtonLink}
-                                onChange={(e) => updateField('buttonLink', e.target.value)}
-                                className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                                placeholder="e.g. /products/new"
-                              />
-                            </div>
-                          )}
                         </div>
 
                         <div className="space-y-4 pt-2">
