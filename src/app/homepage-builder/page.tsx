@@ -147,7 +147,13 @@ export default function HomepageBuilderPage() {
           } : {})
         };
       });
-      setSections(formattedSections);
+      const sortedSections = [...formattedSections];
+      const heroIndex = sortedSections.findIndex(s => s.name === "Hero Banner");
+      if (heroIndex > 0) {
+        const hero = sortedSections.splice(heroIndex, 1)[0];
+        sortedSections.unshift(hero);
+      }
+      setSections(sortedSections);
     } catch (error) {
       console.error("Error fetching homepage layout:", error);
     } finally {
@@ -431,7 +437,15 @@ export default function HomepageBuilderPage() {
              <Reorder.Group 
                axis="y" 
                values={sections} 
-               onReorder={setSections}
+               onReorder={(newOrder) => {
+                 // Ensure Hero Banner stays at index 0 if it exists
+                 const heroIndex = newOrder.findIndex(s => s.name === "Hero Banner");
+                 if (heroIndex > 0) {
+                   const hero = newOrder.splice(heroIndex, 1)[0];
+                   newOrder.unshift(hero);
+                 }
+                 setSections(newOrder);
+               }}
                className="space-y-3"
                style={{ listStyle: "none", margin: 0, padding: 0 }}
              >
@@ -652,7 +666,8 @@ export default function HomepageBuilderPage() {
                   type="text" 
                   value={editingSection.name}
                   onChange={(e) => setEditingSection({ ...editingSection, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                  disabled={editingSection.name === "Hero Banner"}
+                  className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="e.g. Featured Products"
                 />
               </div>
@@ -1089,56 +1104,43 @@ export default function HomepageBuilderPage() {
               </button>
             </div>
 
-            <div className="p-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <button 
-                onClick={() => handleAddSection("banner")}
-                className="flex flex-col items-center justify-center gap-4 p-6 rounded-2xl border-2 border-gray-50 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group"
-              >
-                <div className="w-12 h-12 rounded-full bg-brand-gold/10 text-brand-gold flex items-center justify-center group-hover:scale-110 transition-transform">
-                   <ImageIcon className="w-6 h-6" />
-                </div>
-                <div className="text-center">
-                   <p className="text-xs font-bold text-text-primary">Promo Banner</p>
-                   <p className="text-[9px] text-text-muted mt-0.5">Full-width display with CTAs</p>
-                </div>
-              </button>
-
+            <div className="p-8 flex flex-col gap-4">
               <button 
                 onClick={() => handleAddSection("middle_banner")}
-                className="flex flex-col items-center justify-center gap-4 p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group"
+                className="flex items-center gap-6 p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group w-full text-left"
               >
-                <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                   <Layout className="w-6 h-6" />
+                <div className="w-14 h-14 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
+                   <Layout className="w-7 h-7" />
                 </div>
-                <div className="text-center">
-                   <p className="text-xs font-bold text-text-primary">Middle Banner</p>
-                   <p className="text-[9px] text-text-muted mt-0.5">Split layout & ghost CTA</p>
+                <div>
+                   <p className="text-sm font-bold text-text-primary">Middle Banner</p>
+                   <p className="text-xs text-text-muted mt-1">Split layout & ghost CTA. Perfect for promotional highlights.</p>
                 </div>
               </button>
 
               <button 
                 onClick={() => handleAddSection("double_banner")}
-                className="flex flex-col items-center justify-center gap-4 p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group"
+                className="flex items-center gap-6 p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group w-full text-left"
               >
-                <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                   <Columns className="w-6 h-6" />
+                <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
+                   <Columns className="w-7 h-7" />
                 </div>
-                <div className="text-center">
-                   <p className="text-xs font-bold text-text-primary">Double Banner</p>
-                   <p className="text-[9px] text-text-muted mt-0.5">2-Column split layout</p>
+                <div>
+                   <p className="text-sm font-bold text-text-primary">Double Banner</p>
+                   <p className="text-xs text-text-muted mt-1">2-Column split layout for showcasing multiple collections.</p>
                 </div>
               </button>
 
               <button 
                 onClick={() => handleAddSection("products")}
-                className="flex flex-col items-center justify-center gap-4 p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group"
+                className="flex items-center gap-6 p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-gold/30 hover:bg-brand-gold-light/20 transition-all group w-full text-left"
               >
-                <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                   <LayoutGrid className="w-6 h-6" />
+                <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform flex-shrink-0">
+                   <LayoutGrid className="w-7 h-7" />
                 </div>
-                <div className="text-center">
-                   <p className="text-xs font-bold text-text-primary">Product Grid</p>
-                   <p className="text-[9px] text-text-muted mt-0.5">Dynamic showcase of products</p>
+                <div>
+                   <p className="text-sm font-bold text-text-primary">Product Grid</p>
+                   <p className="text-xs text-text-muted mt-1">Dynamic showcase of products with customizable source filters.</p>
                 </div>
               </button>
             </div>
@@ -1198,6 +1200,7 @@ function SectionItem({ section, onToggle, onEdit, onDelete }: {
   onDelete: () => void;
 }) {
   const controls = useDragControls();
+  const isHeroBanner = section.name === "Hero Banner";
 
   return (
     <Reorder.Item
@@ -1217,12 +1220,18 @@ function SectionItem({ section, onToggle, onEdit, onDelete }: {
         section.active ? "bg-white border-gray-100 shadow-sm" : "bg-gray-50 border-transparent opacity-60"
       )}
     >
-      <div 
-        className="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-primary transition-colors py-2 px-1"
-        onPointerDown={(e) => controls.start(e)}
-      >
-        <GripVertical className="w-4 h-4" />
-      </div>
+      {!isHeroBanner ? (
+        <div 
+          className="cursor-grab active:cursor-grabbing text-text-muted hover:text-text-primary transition-colors py-2 px-1"
+          onPointerDown={(e) => controls.start(e)}
+        >
+          <GripVertical className="w-4 h-4" />
+        </div>
+      ) : (
+        <div className="py-2 px-1 text-brand-gold opacity-50">
+          <Layout className="w-4 h-4" />
+        </div>
+      )}
       <div className="flex-1">
         <div className="flex items-center gap-3">
           <h4 className="text-sm font-bold text-text-primary">{section.name}</h4>
@@ -1264,12 +1273,14 @@ function SectionItem({ section, onToggle, onEdit, onDelete }: {
           >
             <Edit className="w-4 h-4" />
           </button>
-          <button 
-            onClick={onDelete}
-            className="p-2 text-text-muted hover:text-red-500 transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {!isHeroBanner && (
+            <button 
+              onClick={onDelete}
+              className="p-2 text-text-muted hover:text-red-500 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     </Reorder.Item>
