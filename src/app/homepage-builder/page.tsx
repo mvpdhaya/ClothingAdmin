@@ -269,13 +269,12 @@ export default function HomepageBuilderPage() {
       setIsSaving(true);
       try {
         // 1. Prepare base section
+        const currentIndex = sections.findIndex(s => s.id === editingSection.id);
         const sectionToSave: any = {
           name: editingSection.name,
           active: editingSection.active,
           type: editingSection.type,
-          display_order: sections.findIndex(s => s.id === editingSection.id) === -1
-            ? sections.length
-            : sections.find(s => s.id === editingSection.id)?.display_order || 0
+          display_order: currentIndex === -1 ? sections.length : currentIndex
         };
 
         // Only include ID if it's not our placeholder
