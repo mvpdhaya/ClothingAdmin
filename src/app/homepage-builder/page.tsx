@@ -44,6 +44,7 @@ interface Section {
   buttonText?: string;
   buttonLink?: string;
   alignment?: string;
+  buttonType?: string; // e.g. "sale" or "sale | badge" for double banners
   // Product Grid specific
   source?: "all" | "category" | "manual";
   selectedCategory?: string;
@@ -139,6 +140,7 @@ export default function HomepageBuilderPage() {
             buttonText: banner.button_text,
             buttonLink: banner.button_link,
             alignment: banner.alignment,
+            buttonType: banner.button_type || "sale",
           } : {}),
           // All product grid types load from product_grids table
           ...(grid ? {
@@ -302,7 +304,8 @@ export default function HomepageBuilderPage() {
             subtitle: editingSection.subtitle,
             button_text: editingSection.buttonText,
             button_link: editingSection.buttonLink,
-            alignment: editingSection.alignment
+            alignment: editingSection.alignment,
+            button_type: editingSection.buttonType || 'sale'
           }, { onConflict: 'section_id' });
           if (bannerError) throw new Error('promo_banners upsert failed: ' + bannerError.message);
 
@@ -632,10 +635,10 @@ export default function HomepageBuilderPage() {
                                   {section.title && <h4 className="text-[9px] font-black text-white uppercase tracking-tight leading-none mb-1 bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">{section.title}</h4>}
                                   {section.subtitle && <p className="text-[5.5px] text-neutral-400 mb-2 leading-relaxed">{section.subtitle}</p>}
                                   {section.buttonText && (
-                                    <div className="px-2 py-1 border border-neutral-400 text-white text-[4.5px] font-bold tracking-wider rounded uppercase bg-transparent">
-                                      {section.buttonText}
-                                    </div>
-                                  )}
+                                     <div className="px-2 py-1 border border-white/60 text-white text-[4px] font-bold tracking-wider rounded uppercase bg-transparent">
+                                       {section.buttonText}
+                                     </div>
+                                   )}
                                </div>
                                <div className="w-[45%] h-full relative overflow-hidden">
                                   {section.imageUrl ? (
@@ -849,7 +852,9 @@ export default function HomepageBuilderPage() {
 
                     const tabIndex = activeBannerTab === 'left' ? 0 : 1;
 
-                    const updateField = (field: 'title' | 'subtitle' | 'buttonText' | 'buttonLink' | 'alignment' | 'imageUrl', val: string) => {
+                    const buttonTypes = (editingSection.buttonType || "").split(" | ");
+
+                    const updateField = (field: 'title' | 'subtitle' | 'buttonText' | 'buttonLink' | 'alignment' | 'imageUrl' | 'buttonType', val: string) => {
                       if (isDouble) {
                         const idx = tabIndex;
                         if (field === 'title') {
@@ -882,6 +887,11 @@ export default function HomepageBuilderPage() {
                           while (arr.length < 2) arr.push("");
                           arr[idx] = val;
                           setEditingSection({ ...editingSection, imageUrl: arr.join(" | ") });
+                        } else if (field === 'buttonType') {
+                          const arr = [...buttonTypes];
+                          while (arr.length < 2) arr.push("sale");
+                          arr[idx] = val;
+                          setEditingSection({ ...editingSection, buttonType: arr.join(" | ") });
                         }
                       }
                     };
@@ -892,6 +902,7 @@ export default function HomepageBuilderPage() {
                     const currentButtonLink = isDouble ? (links[tabIndex] || "") : (editingSection.buttonLink || "");
                     const currentAlignment = isDouble ? (alignments[tabIndex] || "left") : (editingSection.alignment || "center");
                     const currentImageUrl = isDouble ? (images[tabIndex] || "") : (editingSection.imageUrl || "");
+                    const currentButtonType = isDouble ? (buttonTypes[tabIndex] || "sale") : (editingSection.buttonType || "sale");
 
                     return (
                       <div className="space-y-6">
@@ -983,21 +994,110 @@ export default function HomepageBuilderPage() {
                               placeholder="e.g. Shop Now"
                             />
                           </div>
+                          {isDouble && (
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Link</label>
+                              <input 
+                                type="text" 
+                                value={currentButtonLink}
+                                onChange={(e) => updateField('buttonLink', e.target.value)}
+                                className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                                placeholder="e.g. /products/new"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-4 pt-2">
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Link</label>
-                            <input 
-                              type="text" 
-                              value={currentButtonLink}
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Type</label>
+                            <select 
+                              value={currentButtonType}
                               onChange={(e) => {
+                                const newType = e.target.value as any;
+                                let newLink = currentButtonLink;
+                                if (newType === "sale") newLink = "50";
+                                else if (newType === "badge") newLink = "new";
+                                else if (newType === "category") newLink = availableCategories[0]?.name || "";
+                                
                                 if (isDouble) {
-                                  updateField('buttonLink', e.target.value);
+                                  updateField('buttonType', newType);
+                                  updateField('buttonLink', newLink);
                                 } else {
-                                  setEditingSection({ ...editingSection, buttonLink: e.target.value });
+                                  setEditingSection({ 
+                                    ...editingSection, 
+                                    buttonType: newType,
+                                    buttonLink: newLink
+                                  });
                                 }
                               }}
-                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                              placeholder="e.g. /products/new"
-                            />
+                              className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                            >
+                              <option value="sale">Sale</option>
+                              <option value="badge">Badge</option>
+                              <option value="category">Category</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Link / Value</label>
+                            
+                            {currentButtonType === "sale" ? (
+                              <input 
+                                type="number" 
+                                value={currentButtonLink}
+                                onChange={(e) => {
+                                  if (isDouble) updateField('buttonLink', e.target.value);
+                                  else setEditingSection({ ...editingSection, buttonLink: e.target.value });
+                                }}
+                                className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                                placeholder="Enter offer percentage (e.g. 50)"
+                              />
+                            ) : currentButtonType === "badge" ? (
+                              <select 
+                                value={currentButtonLink || "new"}
+                                onChange={(e) => {
+                                  if (isDouble) updateField('buttonLink', e.target.value);
+                                  else setEditingSection({ ...editingSection, buttonLink: e.target.value });
+                                }}
+                                className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                              >
+                                <option value="new">New</option>
+                                <option value="flash">Flash</option>
+                                <option value="sale">Sale</option>
+                              </select>
+                            ) : currentButtonType === "category" ? (
+                              <select 
+                                value={currentButtonLink}
+                                onChange={(e) => {
+                                  if (isDouble) updateField('buttonLink', e.target.value);
+                                  else setEditingSection({ ...editingSection, buttonLink: e.target.value });
+                                }}
+                                className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                              >
+                                <optgroup label="Main Categories">
+                                  {availableCategories.map(cat => (
+                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                  ))}
+                                </optgroup>
+                                <optgroup label="Subcategories">
+                                  {dbSubcategories.map(sub => (
+                                    <option key={sub.id} value={sub.name}>{sub.name}</option>
+                                  ))}
+                                </optgroup>
+                              </select>
+                            ) : (
+                              <input 
+                                type="text" 
+                                value={currentButtonLink}
+                                onChange={(e) => {
+                                  if (isDouble) updateField('buttonLink', e.target.value);
+                                  else setEditingSection({ ...editingSection, buttonLink: e.target.value });
+                                }}
+                                className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                                placeholder="e.g. /products/new"
+                              />
+                            )}
                           </div>
                         </div>
 
