@@ -360,6 +360,15 @@ export default function AddProductPage() {
         };
       });
 
+      // Filter variant inventory to only include current sizes/colors
+      const filteredInventory: Record<string, number> = {};
+      const rows = getVariantRows();
+      rows.forEach(row => {
+        if (variantInventory[row.key] !== undefined) {
+          filteredInventory[row.key] = variantInventory[row.key];
+        }
+      });
+
       const { error } = await supabase.from("products").insert({
         id: productId,
         name,
@@ -378,7 +387,7 @@ export default function AddProductPage() {
         size_chart: uploadedSizeChartUrl,
         sizes,
         colors: mappedColors,
-        variant_inventory: variantInventory,
+        variant_inventory: filteredInventory,
       });
 
       if (error) throw error;

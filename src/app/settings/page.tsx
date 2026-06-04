@@ -512,48 +512,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100">
-                  <h3 className="text-sm font-bold text-text-primary">COD Settings</h3>
-                </div>
-                <div className="p-6 space-y-6">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Cash on Delivery</span>
-                    <label className="switch">
-                      <input
-                        type="checkbox"
-                        checked={settings.cod_enabled}
-                        onChange={(e) => setSettings({ ...settings, cod_enabled: e.target.checked })}
-                      />
-                      <span className="slider"></span>
-                    </label>
-                  </div>
-                  <div className={cn("space-y-6 transition-all duration-300", !settings.cod_enabled && "opacity-50 pointer-events-none")}>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">COD Extra Charge (Rs.)</label>
-                      <input
-                        type="number"
-                        value={settings.cod_extra_charge || ""}
-                        onChange={(e) => setSettings({ ...settings, cod_extra_charge: parseFloat(e.target.value) || 0 })}
-                        disabled={!settings.cod_enabled}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
-                        placeholder="50"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Available Above Order Value (Rs.)</label>
-                      <input
-                        type="number"
-                        value={settings.cod_min_order || ""}
-                        onChange={(e) => setSettings({ ...settings, cod_min_order: parseFloat(e.target.value) || 0 })}
-                        disabled={!settings.cod_enabled}
-                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+
               <div className="flex justify-end pt-4">
                 <button
                   onClick={handleSaveSettings}
@@ -588,7 +547,12 @@ export default function SettingsPage() {
                           onChange={(e) => {
                             const updated = [...settings.payment_methods];
                             updated[index].active = e.target.checked;
-                            setSettings({ ...settings, payment_methods: updated });
+                            const isCOD = method.name === "Cash on Delivery";
+                            setSettings({ 
+                              ...settings, 
+                              payment_methods: updated,
+                              ...(isCOD ? { cod_enabled: e.target.checked } : {})
+                            });
                           }}
                         />
                         <span className="slider"></span>
@@ -600,6 +564,36 @@ export default function SettingsPage() {
                   )}
                 </div>
               </div>
+
+              {settings.cod_enabled && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
+                  <div className="px-6 py-4 border-b border-gray-100">
+                    <h3 className="text-sm font-bold text-text-primary">Payment Page COD Settings</h3>
+                  </div>
+                  <div className="p-6 space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">COD Extra Charge (Rs.)</label>
+                      <input
+                        type="number"
+                        value={settings.cod_extra_charge || ""}
+                        onChange={(e) => setSettings({ ...settings, cod_extra_charge: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
+                        placeholder="50"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Available Above Order Value (Rs.)</label>
+                      <input
+                        type="number"
+                        value={settings.cod_min_order || ""}
+                        onChange={(e) => setSettings({ ...settings, cod_min_order: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-brand-gold outline-none transition-all"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end pt-4">
                 <button
