@@ -55,8 +55,8 @@ interface Section {
 
 const initialSections: Section[] = [
   { id: "1", name: "Hero Banner", active: true, type: "banner" },
+  { id: "categories-fixed", name: "Categories", active: true, type: "categories" },
   { id: "2", name: "New Arrivals", active: true, type: "products", count: 8, source: "all" },
-  { id: "3", name: "Category Grid", active: true, type: "categories" },
   { id: "4", name: "Flash Sale", active: true, type: "products", count: 4, source: "category", selectedCategory: "Flash Sale" },
   { id: "5", name: "On Sale", active: false, type: "products", count: 4, source: "all" },
   { id: "6", name: "Testimonials", active: true, type: "content" },
@@ -70,6 +70,7 @@ export default function HomepageBuilderPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeBannerTab, setActiveBannerTab] = useState<'left' | 'right'>('left');
+  const [activeCatTab, setActiveCatTab] = useState<1 | 2 | 3 | 4>(1);
   const [productSearch, setProductSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -107,10 +108,11 @@ export default function HomepageBuilderPage() {
     setIsLoading(true);
     try {
       // Fetch sections, banners and grids separately to avoid join issues with schema cache
-      const [sectionsRes, bannersRes, gridsRes] = await Promise.all([
+      const [sectionsRes, bannersRes, gridsRes, catGridsRes] = await Promise.all([
         supabase.from('homepage_sections').select('*').order('display_order', { ascending: true }),
         supabase.from('promo_banners').select('*'),
-        supabase.from('product_grids').select('*')
+        supabase.from('product_grids').select('*'),
+        supabase.from('category_grids').select('*')
       ]);
 
       if (sectionsRes.error) throw sectionsRes.error;
@@ -118,10 +120,12 @@ export default function HomepageBuilderPage() {
       const data = sectionsRes.data || [];
       const banners = bannersRes.data || [];
       const grids = gridsRes.data || [];
+      const catGrids = catGridsRes.data || [];
 
       const formattedSections: Section[] = data.map((row: any) => {
         const banner = banners.find(b => b.section_id === row.id);
         const grid = grids.find(g => g.section_id === row.id);
+        const catGrid = catGrids.find((c: any) => c.section_id === row.id);
 
         return {
           id: row.id,
@@ -144,15 +148,35 @@ export default function HomepageBuilderPage() {
             selectedProducts: grid.selected_products,
             description: grid.description,
             count: grid.item_count,
+          } : {}),
+          ...(catGrid ? {
+            subtitle: catGrid.main_title,
+            imageUrl: [catGrid.cat1_image, catGrid.cat2_image, catGrid.cat3_image, catGrid.cat4_image].join(" | "),
+            buttonLink: [catGrid.cat1_link, catGrid.cat2_link, catGrid.cat3_link, catGrid.cat4_link].join(" | "),
+            title: " | | | " 
           } : {})
         };
       });
       const sortedSections = [...formattedSections];
+      
+      // Ensure Categories exists (fallback for new users)
+      if (!sortedSections.find(s => s.name === "Categories")) {
+        sortedSections.push({ 
+          id: "categories-fixed", 
+          name: "Categories", 
+          active: true, 
+          type: "categories",
+          display_order: sortedSections.length
+        });
+      }
+
+      // Pin Hero Banner to top
       const heroIndex = sortedSections.findIndex(s => s.name === "Hero Banner");
       if (heroIndex > 0) {
         const hero = sortedSections.splice(heroIndex, 1)[0];
         sortedSections.unshift(hero);
       }
+
       setSections(sortedSections);
     } catch (error) {
       console.error("Error fetching homepage layout:", error);
@@ -174,14 +198,22 @@ export default function HomepageBuilderPage() {
   const handleSaveLayout = async () => {
     setIsSaving(true);
     
-    // Only update the display_order of existing sections
-    const orderUpdates = sections.map((section, index) => ({
-      id: section.id,
-      name: section.name,
-      active: section.active,
-      type: section.type,
-      display_order: index
-    }));
+    // Only update the display_order of existing sections (those with valid UUIDs)
+    const orderUpdates = sections
+      .filter(section => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(section.id))
+      .map((section) => ({
+        id: section.id,
+        name: section.name,
+        active: section.active,
+        type: section.type,
+        // Use the index from the ORIGINAL sections array for absolute stability
+        display_order: sections.findIndex(s => s.id === section.id)
+      }));
+
+    if (orderUpdates.length === 0) {
+      setIsSaving(false);
+      return;
+    }
 
     const { error } = await supabase.from('homepage_sections').upsert(orderUpdates);
     
@@ -237,8 +269,7 @@ export default function HomepageBuilderPage() {
       setIsSaving(true);
       try {
         // 1. Prepare base section
-        const sectionToSave = {
-          id: editingSection.id,
+        const sectionToSave: any = {
           name: editingSection.name,
           active: editingSection.active,
           type: editingSection.type,
@@ -247,14 +278,26 @@ export default function HomepageBuilderPage() {
             : sections.find(s => s.id === editingSection.id)?.display_order || 0
         };
 
+        // Only include ID if it's not our placeholder
+        if (editingSection.id !== "categories-fixed") {
+          sectionToSave.id = editingSection.id;
+        }
+
         // 2. Upsert base section into homepage_sections
-        const { error: sectionError } = await supabase.from('homepage_sections').upsert(sectionToSave);
+        const { data: upsertedData, error: sectionError } = await supabase
+          .from('homepage_sections')
+          .upsert(sectionToSave)
+          .select()
+          .single();
+
         if (sectionError) throw new Error('homepage_sections upsert failed: ' + sectionError.message);
+        
+        const savedSectionId = upsertedData.id;
 
         // 3. Save specific data per type
         if (editingSection.type === 'banner' || editingSection.type === 'middle_banner' || editingSection.type === 'double_banner') {
           const { error: bannerError } = await supabase.from('promo_banners').upsert({
-            section_id: editingSection.id,
+            section_id: savedSectionId,
             image_url: editingSection.imageUrl,
             title: editingSection.title,
             subtitle: editingSection.subtitle,
@@ -266,10 +309,10 @@ export default function HomepageBuilderPage() {
 
         } else if (editingSection.type === 'products') {
           // Delete existing product_grids row first, then insert fresh (avoids onConflict issues)
-          await supabase.from('product_grids').delete().eq('section_id', editingSection.id);
+          await supabase.from('product_grids').delete().eq('section_id', savedSectionId);
 
           const { error: gridError } = await supabase.from('product_grids').insert({
-            section_id: editingSection.id,
+            section_id: savedSectionId,
             source: editingSection.source,
             selected_category: editingSection.selectedCategory || null,
             selected_subcategory: editingSection.selectedSubcategory || null,
@@ -278,7 +321,51 @@ export default function HomepageBuilderPage() {
             item_count: editingSection.count || null
           });
           if (gridError) throw new Error('product_grids insert failed: ' + gridError.message);
+        } else if (editingSection.type === 'categories') {
+          // Delete existing row first
+          await supabase.from('category_grids').delete().eq('section_id', savedSectionId);
+
+          const images = (editingSection.imageUrl || "").split(" | ");
+          const links = (editingSection.buttonLink || "").split(" | ");
+
+          const { error: catError } = await supabase.from('category_grids').insert({
+            section_id: savedSectionId,
+            main_title: editingSection.subtitle || null,
+            cat1_image: images[0] || null,
+            cat1_link: links[0] || null,
+            cat2_image: images[1] || null,
+            cat2_link: links[1] || null,
+            cat3_image: images[2] || null,
+            cat3_link: links[2] || null,
+            cat4_image: images[3] || null,
+            cat4_link: links[3] || null
+          });
+          if (catError) throw new Error('category_grids insert failed: ' + catError.message);
         }
+
+        // NOW: Sync display_order for ALL sections to ensure uniqueness and stability
+        // This prevents sections from jumping to the top by enforcing the current array sequence
+        const updatedSectionsToSync = sections
+          .map((s, idx) => {
+             const sectionId = s.id === editingSection.id ? savedSectionId : s.id;
+             // Only include if it's a UUID (or the newly saved one)
+             if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sectionId)) return null;
+             
+             return {
+               id: sectionId,
+               name: s.name,
+               active: s.active,
+               type: s.type,
+               display_order: idx
+             };
+          })
+          .filter(Boolean) as any[];
+
+        const { error: syncError } = await supabase
+          .from('homepage_sections')
+          .upsert(updatedSectionsToSync);
+        
+        if (syncError) console.error('Ordering sync failed:', syncError.message);
 
         await fetchSections();
         setIsModalOpen(false);
@@ -354,12 +441,20 @@ export default function HomepageBuilderPage() {
       if (editingSection.type === "double_banner" && currentUrls.length < 2) {
         currentUrls = ["", ""];
       }
+      if (editingSection.type === "categories" && currentUrls.length < 4) {
+        while (currentUrls.length < 4) currentUrls.push("");
+      }
 
       // Local preview
       const reader = new FileReader();
       reader.onloadend = () => {
         if (editingSection.type === "double_banner" && side) {
           const idx = side === "left" ? 0 : 1;
+          const newUrls = [...currentUrls];
+          newUrls[idx] = reader.result as string;
+          setEditingSection({ ...editingSection, imageUrl: newUrls.join(" | ") });
+        } else if (editingSection.type === "categories") {
+          const idx = activeCatTab - 1;
           const newUrls = [...currentUrls];
           newUrls[idx] = reader.result as string;
           setEditingSection({ ...editingSection, imageUrl: newUrls.join(" | ") });
@@ -399,6 +494,11 @@ export default function HomepageBuilderPage() {
         
         if (editingSection.type === "double_banner" && side) {
           const idx = side === "left" ? 0 : 1;
+          const newUrls = [...currentUrls];
+          newUrls[idx] = publicUrlData.publicUrl;
+          setEditingSection(prev => prev ? { ...prev, imageUrl: newUrls.join(" | ") } : prev);
+        } else if (editingSection.type === "categories") {
+          const idx = activeCatTab - 1;
           const newUrls = [...currentUrls];
           newUrls[idx] = publicUrlData.publicUrl;
           setEditingSection(prev => prev ? { ...prev, imageUrl: newUrls.join(" | ") } : prev);
@@ -444,6 +544,7 @@ export default function HomepageBuilderPage() {
                    const hero = newOrder.splice(heroIndex, 1)[0];
                    newOrder.unshift(hero);
                  }
+
                  setSections(newOrder);
                }}
                className="space-y-3"
@@ -612,6 +713,32 @@ export default function HomepageBuilderPage() {
                                   <div className="aspect-square bg-gray-100 rounded"></div>
                                </div>
                             </div>
+                         ) : section.type === "categories" ? (
+                           <div className="space-y-1.5">
+                              <div className="flex justify-between items-center px-0.5">
+                                 <span className="text-[9px] font-bold tracking-tight uppercase text-text-primary">
+                                    {section.subtitle || "SHOP OUR TOP CATEGORIES"}
+                                 </span>
+                              </div>
+                              <div className="grid grid-cols-4 gap-1.5">
+                                 {(() => {
+                                   const titles = (section.title || "").split(" | ");
+                                   const images = (section.imageUrl || "").split(" | ");
+                                   
+                                   return [0, 1, 2, 3].map(idx => (
+                                     <div key={idx} className="aspect-[4/5] relative rounded-lg overflow-hidden bg-gray-50 border border-gray-100 shadow-sm animate-fade-in group">
+                                        {images[idx] ? (
+                                          <img src={images[idx]} alt={titles[idx]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center opacity-10">
+                                             <LayoutGrid className="w-4 h-4" />
+                                          </div>
+                                        )}
+                                     </div>
+                                   ));
+                                 })()}
+                              </div>
+                           </div>
                          ) : (
                             <div className="w-full py-4 bg-gray-50 rounded-lg flex items-center justify-center border border-gray-100 border-dashed">
                                <span className="text-[8px] font-bold text-text-muted uppercase tracking-widest">{section.name}</span>
@@ -1035,8 +1162,6 @@ export default function HomepageBuilderPage() {
                     </div>
                   )}
 
-
-
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Items to Show</label>
                     <input 
@@ -1047,6 +1172,116 @@ export default function HomepageBuilderPage() {
                     />
                     <p className="text-[10px] text-text-muted italic">Set the number of products to display in this grid.</p>
                   </div>
+                </div>
+              )}
+
+              {editingSection.type === "categories" && (
+                <div className="space-y-6 pt-4 border-t border-gray-100">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Section Main Heading</label>
+                    <input 
+                      type="text" 
+                      value={editingSection.subtitle || ""}
+                      onChange={(e) => setEditingSection({ ...editingSection, subtitle: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+                      placeholder="e.g. SHOP OUR TOP CATEGORIES"
+                    />
+                  </div>
+
+                  <div className="flex border-b border-gray-200 mb-6 bg-gray-50/50 p-1 rounded-xl">
+                    {[1, 2, 3, 4].map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setActiveCatTab(slot as any)}
+                        className={cn(
+                          "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                          activeCatTab === slot ? "bg-white text-brand-gold shadow-sm" : "text-text-muted hover:text-text-primary"
+                        )}
+                      >
+                        Slot {slot}
+                      </button>
+                    ))}
+                  </div>
+
+                  {(() => {
+                    const titles = (editingSection.title || "").split(" | ");
+                    const links = (editingSection.buttonLink || "").split(" | ");
+                    const images = (editingSection.imageUrl || "").split(" | ");
+                    const idx = activeCatTab - 1;
+
+                    const currentTitle = titles[idx] || "";
+                    const currentLink = links[idx] || "";
+                    const currentImageUrl = images[idx] || "";
+
+                    const updateCatField = (field: 'title' | 'link' | 'imageUrl', val: string) => {
+                      const tArr = [...titles]; while (tArr.length < 4) tArr.push("");
+                      const lArr = [...links]; while (lArr.length < 4) lArr.push("");
+                      const iArr = [...images]; while (iArr.length < 4) iArr.push("");
+
+                      if (field === 'title') tArr[idx] = val;
+                      if (field === 'link') lArr[idx] = val;
+                      if (field === 'imageUrl') iArr[idx] = val;
+
+                      setEditingSection({
+                        ...editingSection,
+                        title: tArr.join(" | "),
+                        buttonLink: lArr.join(" | "),
+                        imageUrl: iArr.join(" | ")
+                      });
+                    };
+
+                    return (
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Category Image (Slot {activeCatTab})</label>
+                          <div className="flex items-center gap-6 p-4 bg-gray-50 border border-gray-100 rounded-2xl group hover:border-brand-gold/30 transition-all">
+                             <div className="w-24 h-24 rounded-xl overflow-hidden bg-white flex-shrink-0 border border-gray-100 shadow-sm">
+                                {currentImageUrl ? (
+                                  <img src={currentImageUrl} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-text-muted">
+                                     <ImageIcon className="w-8 h-8 opacity-20" />
+                                  </div>
+                                )}
+                             </div>
+                             <div className="flex-1 space-y-3">
+                                <div>
+                                   <p className="text-sm font-bold text-text-primary">Upload Category Image</p>
+                                   <p className="text-[10px] text-text-muted mt-0.5">JPG, PNG or WebP. Max 2MB.</p>
+                                </div>
+                                <label className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-text-primary hover:bg-gray-50 cursor-pointer transition-colors shadow-sm">
+                                   <Upload className="w-3.5 h-3.5 text-brand-gold" />
+                                   Select File
+                                   <input 
+                                     type="file" 
+                                     className="hidden" 
+                                     accept="image/*"
+                                     onChange={(e) => handleImageUpload(e)}
+                                   />
+                                </label>
+                             </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Link Category</label>
+                            <select 
+                              value={currentLink}
+                              onChange={(e) => updateCatField('link', e.target.value)}
+                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                            >
+                              <option value="">Select Category</option>
+                              {availableCategories.map(cat => (
+                                <option key={cat.id} value={cat.name}>{cat.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1201,6 +1436,7 @@ function SectionItem({ section, onToggle, onEdit, onDelete }: {
 }) {
   const controls = useDragControls();
   const isHeroBanner = section.name === "Hero Banner";
+  const isCategories = section.name === "Categories";
 
   return (
     <Reorder.Item
@@ -1273,7 +1509,7 @@ function SectionItem({ section, onToggle, onEdit, onDelete }: {
           >
             <Edit className="w-4 h-4" />
           </button>
-          {!isHeroBanner && (
+          {!isCategories && !isHeroBanner && (
             <button 
               onClick={onDelete}
               className="p-2 text-text-muted hover:text-red-500 transition-colors"
