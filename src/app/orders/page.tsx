@@ -211,19 +211,61 @@ function OrdersList() {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     if (filteredOrders.length === 0) {
       alert("No orders to export!");
       return;
     }
+
+    // 1. Fetch all items and products for these orders to calculate discounts
+    const orderIds = filteredOrders.map(o => o.id);
+    
+    const { data: allItems, error: itemsError } = await supabase
+      .from("order_items")
+      .select("*")
+      .in("order_id", orderIds);
+      
+    if (itemsError) {
+      console.error("Error fetching items for export:", itemsError);
+      alert("Error fetching order items for export");
+      return;
+    }
+
+    const itemProductIds = Array.from(new Set(allItems.map(i => i.product_id)));
+    const { data: itemsProducts, error: productsError } = await supabase
+      .from("products")
+      .select("id, price, old_price")
+      .in("id", itemProductIds);
+      
+    if (productsError) {
+      console.error("Error fetching products for export:", productsError);
+    }
+
+    const productMap = (itemsProducts || []).reduce((acc: any, p: any) => {
+      acc[p.id] = p;
+      return acc;
+    }, {});
+
+    const orderItemsMap = allItems.reduce((acc: any, item: any) => {
+      if (!acc[item.order_id]) acc[item.order_id] = [];
+      acc[item.order_id].push({
+        ...item,
+        products: productMap[item.product_id] || null
+      });
+      return acc;
+    }, {});
 
     const headers = [
       "Order ID", 
       "Customer Name", 
       "Customer Email", 
       "Address", 
-      "Items Count", 
-      "Total", 
+      "Items Count",
+      "Subtotal (Original)",
+      "Discount",
+      "Discounted Subtotal",
+      "Shipping",
+      "Total Amount", 
       "Payment", 
       "Status", 
       "Date"
@@ -236,12 +278,26 @@ function OrdersList() {
     };
 
     const rows = filteredOrders.map(order => {
+      const items = orderItemsMap[order.id] || [];
+      
+      const itemTotalDiscount = items.reduce((acc: number, item: any) => {
+        const oldPrice = item.products?.old_price || item.price;
+        if (oldPrice > item.price) {
+          return acc + (oldPrice - item.price) * item.quantity;
+        }
+        return acc;
+      }, 0);
+
+      const totalOrderDiscount = (order.discount_amount || 0) + itemTotalDiscount;
+      const originalSubtotal = (order.subtotal || 0) + itemTotalDiscount;
+      const discountedSubtotal = order.subtotal || 0;
+
       const customer_name = order.customer?.full_name || order.customer_name || "N/A";
       const customer_email = order.customer?.email || order.customer_email || "N/A";
       const address = order.address 
         ? `${order.address.line1}, ${order.address.city}` 
         : (typeof order.address === 'string' ? order.address : "N/A");
-      const total = typeof order.total === 'number' ? `Rs.${order.total.toLocaleString()}` : order.total;
+      const total = typeof order.total === 'number' ? order.total : parseFloat(String(order.total).replace(/[^0-9.]/g, '')) || 0;
       
       return [
         escape(order.id),
@@ -249,6 +305,10 @@ function OrdersList() {
         escape(customer_email),
         escape(address),
         escape(order.item_count),
+        escape(originalSubtotal),
+        escape(totalOrderDiscount),
+        escape(discountedSubtotal),
+        escape(order.shipping_amount || 0),
         escape(total),
         escape(order.payment),
         escape(order.status),
