@@ -844,7 +844,7 @@ function OrdersList() {
                   <div className="space-y-3">
                     <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Payment Method</label>
                     <div className="flex flex-wrap gap-2">
-                      {["All", "UPI", "COD", "Card"].map((method) => (
+                      {["All", "COD", "Card"].map((method) => (
                         <button 
                           key={method} 
                           onClick={() => setPaymentFilter(method)} 
