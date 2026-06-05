@@ -46,10 +46,8 @@ interface Section {
   alignment?: string;
   buttonType?: string; // e.g. "sale" or "sale | badge" for double banners
   // Product Grid specific
-  source?: "all" | "category" | "manual";
-  selectedCategory?: string;
-  selectedSubcategory?: string;
-  selectedProducts?: string[]; // Array of product IDs
+  productType?: string;
+  productLink?: string;
   description?: string; // Product Grid section description
   display_order?: number;
 }
@@ -57,9 +55,9 @@ interface Section {
 const initialSections: Section[] = [
   { id: "1", name: "Hero Banner", active: true, type: "banner" },
   { id: "categories-fixed", name: "Categories", active: true, type: "categories" },
-  { id: "2", name: "New Arrivals", active: true, type: "products", count: 8, source: "all" },
-  { id: "4", name: "Flash Sale", active: true, type: "products", count: 4, source: "category", selectedCategory: "Flash Sale" },
-  { id: "5", name: "On Sale", active: false, type: "products", count: 4, source: "all" },
+  { id: "2", name: "New Arrivals", active: true, type: "products", count: 8, productType: "sale", productLink: "new" },
+  { id: "4", name: "Flash Sale", active: true, type: "products", count: 4, productType: "category", productLink: "Flash Sale" },
+  { id: "5", name: "On Sale", active: false, type: "products", count: 4, productType: "sale", productLink: "50" },
   { id: "6", name: "Testimonials", active: true, type: "content" },
   { id: "7", name: "Blog Posts", active: false, type: "content" },
   { id: "8", name: "Newsletter Banner", active: true, type: "banner" },
@@ -144,10 +142,8 @@ export default function HomepageBuilderPage() {
           } : {}),
           // All product grid types load from product_grids table
           ...(grid ? {
-            source: grid.source,
-            selectedCategory: grid.selected_category,
-            selectedSubcategory: grid.selected_subcategory,
-            selectedProducts: grid.selected_products,
+            productType: grid.product_type || "sale",
+            productLink: grid.product_link,
             description: grid.description,
             count: grid.item_count,
           } : {}),
@@ -315,11 +311,9 @@ export default function HomepageBuilderPage() {
 
           const { error: gridError } = await supabase.from('product_grids').insert({
             section_id: savedSectionId,
-            source: editingSection.source,
-            selected_category: editingSection.selectedCategory || null,
-            selected_subcategory: editingSection.selectedSubcategory || null,
+            product_type: editingSection.productType || "sale",
+            product_link: editingSection.productLink || null,
             description: editingSection.description || null,
-            selected_products: editingSection.selectedProducts || null,
             item_count: editingSection.count || null
           });
           if (gridError) throw new Error('product_grids insert failed: ' + gridError.message);
@@ -428,7 +422,8 @@ export default function HomepageBuilderPage() {
           active: true, 
           type: "products", 
           count: 4,
-          source: "all"
+          productType: "sale",
+          productLink: "50"
         };
     
     setIsAddModalOpen(false);
@@ -703,9 +698,11 @@ export default function HomepageBuilderPage() {
                                   <div className="flex flex-col">
                                     <span className="text-[10px] font-bold">{section.name}</span>
                                     <span className="text-[6px] text-text-muted font-bold uppercase tracking-wider">
-                                      {section.source === "all" ? "All Products" : 
-                                       section.source === "category" ? `Category: ${section.selectedCategory}${section.selectedSubcategory ? ` > ${section.selectedSubcategory}` : ""}` : 
-                                       `Selected: ${section.selectedProducts?.length || 0} Products`}
+                                      {section.productType === "all" ? "All Products" : 
+                                       section.productType === "category" ? `Category: ${section.productLink}` : 
+                                       section.productType === "sale" ? `${section.productLink}% OFF` : 
+                                       section.productType === "badge" ? `Badge: ${section.productLink}` :
+                                       `Link: ${section.productLink}`}
                                     </span>
                                   </div>
                                   <span className="text-[8px] text-text-muted">See all</span>
@@ -749,20 +746,6 @@ export default function HomepageBuilderPage() {
                       </div>
                     ))}
                  </div>
-              </div>
-
-              <div className="mt-8 flex gap-4">
-                 <button className="flex items-center gap-2 text-xs font-bold text-text-muted hover:text-text-primary transition-colors">
-                    <Eye className="w-4 h-4" />
-                    Full Screen Preview
-                 </button>
-                 <button 
-                    onClick={handleResetToDefault}
-                    className="flex items-center gap-2 text-xs font-bold text-text-muted hover:text-text-primary transition-colors"
-                 >
-                    <Layout className="w-4 h-4" />
-                    Reset to Default
-                 </button>
               </div>
            </div>
         </div>
@@ -814,35 +797,41 @@ export default function HomepageBuilderPage() {
                 </div>
               )}
 
-              {(editingSection.type === "banner" || editingSection.type === "middle_banner" || editingSection.type === "double_banner") && (
+              {(editingSection.type === "banner" || editingSection.type === "middle_banner" || editingSection.type === "double_banner" || editingSection.type === "products") && (
                 <div className="space-y-6 pt-4 border-t border-gray-100">
-                  {editingSection.type === "double_banner" && (
-                    <div className="flex border-b border-gray-200 mb-6 bg-gray-50/50 p-1 rounded-xl">
-                      <button
-                        type="button"
-                        onClick={() => setActiveBannerTab('left')}
-                        className={cn(
-                          "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                          activeBannerTab === 'left' ? "bg-white text-brand-gold shadow-sm" : "text-text-muted hover:text-text-primary"
-                        )}
-                      >
-                        Left Banner Card
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActiveBannerTab('right')}
-                        className={cn(
-                          "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                          activeBannerTab === 'right' ? "bg-white text-brand-gold shadow-sm" : "text-text-muted hover:text-text-primary"
-                        )}
-                      >
-                        Right Banner Card
-                      </button>
+                  {(editingSection.type === "banner" || editingSection.type === "middle_banner" || editingSection.type === "double_banner") && (
+                    <div className="space-y-6">
+                      {editingSection.type === "double_banner" && (
+                        <div className="flex border-b border-gray-200 mb-6 bg-gray-50/50 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => setActiveBannerTab('left')}
+                            className={cn(
+                              "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                              activeBannerTab === 'left' ? "bg-white text-brand-gold shadow-sm" : "text-text-muted hover:text-text-primary"
+                            )}
+                          >
+                            Left Banner Card
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveBannerTab('right')}
+                            className={cn(
+                              "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
+                              activeBannerTab === 'right' ? "bg-white text-brand-gold shadow-sm" : "text-text-muted hover:text-text-primary"
+                            )}
+                          >
+                            Right Banner Card
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {(() => {
                     const isDouble = editingSection.type === "double_banner";
+                    const isProducts = editingSection.type === "products";
+                    
                     const titles = (editingSection.title || "").split(" | ");
                     const subtitles = (editingSection.subtitle || "").split(" | ");
                     const buttons = (editingSection.buttonText || "").split(" | ");
@@ -852,12 +841,15 @@ export default function HomepageBuilderPage() {
 
                     const tabIndex = activeBannerTab === 'left' ? 0 : 1;
 
-                    const buttonTypes = (editingSection.buttonType || "").split(" | ");
+                    const bannerButtonTypes = (editingSection.buttonType || "").split(" | ");
+                    
+                    const currentTypeField = isProducts ? 'productType' : 'buttonType';
+                    const currentLinkField = isProducts ? 'productLink' : 'buttonLink';
 
-                    const updateField = (field: 'title' | 'subtitle' | 'buttonText' | 'buttonLink' | 'alignment' | 'imageUrl' | 'buttonType', val: string) => {
+                    const updateField = (field: 'title' | 'subtitle' | 'buttonText' | 'buttonLink' | 'alignment' | 'imageUrl' | 'buttonType' | 'productType' | 'productLink', val: string) => {
                       setEditingSection(prev => {
                         if (!prev) return prev;
-                        if (isDouble) {
+                        if (isDouble && field !== 'productType' && field !== 'productLink') {
                           const idx = tabIndex;
                           const currentRawValue = (prev[field as keyof Section] as string) || "";
                           const arr = currentRawValue.split(" | ");
@@ -880,106 +872,112 @@ export default function HomepageBuilderPage() {
                     const currentTitle = isDouble ? (titles[tabIndex] || "") : (editingSection.title || "");
                     const currentSubtitle = isDouble ? (subtitles[tabIndex] || "") : (editingSection.subtitle || "");
                     const currentButtonText = isDouble ? (buttons[tabIndex] || "") : (editingSection.buttonText || "");
-                    const currentButtonLink = isDouble ? (links[tabIndex] || "") : (editingSection.buttonLink || "");
+                    const currentButtonLink = isDouble ? (links[tabIndex] || "") : (isProducts ? (editingSection.productLink || "") : (editingSection.buttonLink || ""));
                     const currentAlignment = isDouble ? (alignments[tabIndex] || "left") : (editingSection.alignment || "center");
                     const currentImageUrl = isDouble ? (images[tabIndex] || "") : (editingSection.imageUrl || "");
-                    const currentButtonType = isDouble ? (buttonTypes[tabIndex] || "sale") : (editingSection.buttonType || "sale");
+                    const currentButtonType = isDouble ? (bannerButtonTypes[tabIndex] || "sale") : (isProducts ? (editingSection.productType || "sale") : (editingSection.buttonType || "sale"));
 
                     return (
                       <div className="space-y-6">
-                        {/* Banner Image */}
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">
-                            {isDouble ? `${activeBannerTab === 'left' ? 'Left' : 'Right'} Banner Image` : 'Banner Image'}
-                          </label>
-                          <div className="flex items-center gap-6 p-4 bg-gray-50 border border-gray-100 rounded-2xl group hover:border-brand-gold/30 transition-all">
-                             <div className="w-24 h-24 rounded-xl overflow-hidden bg-white flex-shrink-0 border border-gray-100 shadow-sm">
-                                {currentImageUrl ? (
-                                  <img src={currentImageUrl} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-text-muted">
-                                     <ImageIcon className="w-8 h-8 opacity-20" />
-                                  </div>
-                                )}
-                             </div>
-                             <div className="flex-1 space-y-3">
-                                <div>
-                                   <p className="text-sm font-bold text-text-primary">Upload Local Image</p>
-                                   <p className="text-[10px] text-text-muted mt-0.5">JPG, PNG or WebP. Max 2MB recommended.</p>
-                                </div>
-                                <label className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-text-primary hover:bg-gray-50 cursor-pointer transition-colors shadow-sm">
-                                   <Upload className="w-3.5 h-3.5 text-brand-gold" />
-                                   Select File
-                                   <input 
-                                     type="file" 
-                                     className="hidden" 
-                                     accept="image/*"
-                                     onChange={(e) => handleImageUpload(e, isDouble ? activeBannerTab : undefined)}
-                                   />
-                                </label>
-                             </div>
-                          </div>
-                        </div>
+                        {!isProducts && (
+                          <>
+                            {/* Banner Image */}
+                            <div className="space-y-2">
+                              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+                                {isDouble ? `${activeBannerTab === 'left' ? 'Left' : 'Right'} Banner Image` : 'Banner Image'}
+                              </label>
+                              <div className="flex items-center gap-6 p-4 bg-gray-50 border border-gray-100 rounded-2xl group hover:border-brand-gold/30 transition-all">
+                                 <div className="w-24 h-24 rounded-xl overflow-hidden bg-white flex-shrink-0 border border-gray-100 shadow-sm">
+                                    {currentImageUrl ? (
+                                      <img src={currentImageUrl} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-text-muted">
+                                         <ImageIcon className="w-8 h-8 opacity-20" />
+                                      </div>
+                                    )}
+                                 </div>
+                                 <div className="flex-1 space-y-3">
+                                    <div>
+                                       <p className="text-sm font-bold text-text-primary">Upload Local Image</p>
+                                       <p className="text-[10px] text-text-muted mt-0.5">JPG, PNG or WebP. Max 2MB recommended.</p>
+                                    </div>
+                                    <label className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-text-primary hover:bg-gray-50 cursor-pointer transition-colors shadow-sm">
+                                       <Upload className="w-3.5 h-3.5 text-brand-gold" />
+                                       Select File
+                                       <input 
+                                         type="file" 
+                                         className="hidden" 
+                                         accept="image/*"
+                                         onChange={(e) => handleImageUpload(e, isDouble ? activeBannerTab : undefined)}
+                                       />
+                                    </label>
+                                 </div>
+                              </div>
+                            </div>
 
-                        {/* Title & Subtitle */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Title</label>
-                            <input 
-                              type="text" 
-                              value={currentTitle}
-                              onChange={(e) => {
-                                if (isDouble) {
-                                  updateField('title', e.target.value);
-                                } else {
-                                  setEditingSection({ ...editingSection, title: e.target.value });
-                                }
-                              }}
-                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                              placeholder="e.g. New Arrivals"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Subtitle</label>
-                            <input 
-                              type="text" 
-                              value={currentSubtitle}
-                              onChange={(e) => {
-                                if (isDouble) {
-                                  updateField('subtitle', e.target.value);
-                                } else {
-                                  setEditingSection({ ...editingSection, subtitle: e.target.value });
-                                }
-                              }}
-                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                              placeholder="e.g. Explore the collection"
-                            />
-                          </div>
-                        </div>
+                            {/* Title & Subtitle */}
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Title</label>
+                                <input 
+                                  type="text" 
+                                  value={currentTitle}
+                                  onChange={(e) => {
+                                    if (isDouble) {
+                                      updateField('title', e.target.value);
+                                    } else {
+                                      setEditingSection({ ...editingSection, title: e.target.value });
+                                    }
+                                  }}
+                                  className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                                  placeholder="e.g. New Arrivals"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Subtitle</label>
+                                <input 
+                                  type="text" 
+                                  value={currentSubtitle}
+                                  onChange={(e) => {
+                                    if (isDouble) {
+                                      updateField('subtitle', e.target.value);
+                                    } else {
+                                      setEditingSection({ ...editingSection, subtitle: e.target.value });
+                                    }
+                                  }}
+                                  className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                                  placeholder="e.g. Explore the collection"
+                                />
+                              </div>
+                            </div>
 
-                        {/* Button Text & Link */}
-                        <div className="grid grid-cols-1 gap-4">
-                          <div className="space-y-2">
-                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Text</label>
-                            <input 
-                              type="text" 
-                              value={currentButtonText}
-                              onChange={(e) => {
-                                if (isDouble) {
-                                  updateField('buttonText', e.target.value);
-                                } else {
-                                  setEditingSection({ ...editingSection, buttonText: e.target.value });
-                                }
-                              }}
-                              className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                              placeholder="e.g. Shop Now"
-                            />
-                          </div>
-                        </div>
+                            {/* Button Text & Link */}
+                            <div className="grid grid-cols-1 gap-4">
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Text</label>
+                                <input 
+                                  type="text" 
+                                  value={currentButtonText}
+                                  onChange={(e) => {
+                                    if (isDouble) {
+                                      updateField('buttonText', e.target.value);
+                                    } else {
+                                      setEditingSection({ ...editingSection, buttonText: e.target.value });
+                                    }
+                                  }}
+                                  className="w-full px-4 py-2 bg-gray-50 border border-transparent rounded-xl text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
+                                  placeholder="e.g. Shop Now"
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
 
                         <div className="space-y-4 pt-2">
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Type</label>
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+                              {isProducts ? "Product Type" : "Button Type"}
+                            </label>
                             <select 
                               value={currentButtonType}
                               onChange={(e) => {
@@ -992,6 +990,12 @@ export default function HomepageBuilderPage() {
                                 if (isDouble) {
                                   updateField('buttonType', newType);
                                   updateField('buttonLink', newLink);
+                                } else if (isProducts) {
+                                  setEditingSection({ 
+                                    ...editingSection, 
+                                    productType: newType,
+                                    productLink: newLink
+                                  });
                                 } else {
                                   setEditingSection({ 
                                     ...editingSection, 
@@ -1009,7 +1013,9 @@ export default function HomepageBuilderPage() {
                           </div>
 
                           <div className="space-y-2">
-                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Button Link / Value</label>
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+                              {isProducts ? "Product Link / Value" : "Button Link / Value"}
+                            </label>
                             
                             {currentButtonType === "sale" ? (
                               <input 
@@ -1017,6 +1023,7 @@ export default function HomepageBuilderPage() {
                                 value={currentButtonLink}
                                 onChange={(e) => {
                                   if (isDouble) updateField('buttonLink', e.target.value);
+                                  else if (isProducts) setEditingSection({ ...editingSection, productLink: e.target.value });
                                   else setEditingSection({ ...editingSection, buttonLink: e.target.value });
                                 }}
                                 className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
@@ -1027,6 +1034,7 @@ export default function HomepageBuilderPage() {
                                 value={currentButtonLink || "new"}
                                 onChange={(e) => {
                                   if (isDouble) updateField('buttonLink', e.target.value);
+                                  else if (isProducts) setEditingSection({ ...editingSection, productLink: e.target.value });
                                   else setEditingSection({ ...editingSection, buttonLink: e.target.value });
                                 }}
                                 className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
@@ -1040,6 +1048,7 @@ export default function HomepageBuilderPage() {
                                 value={currentButtonLink}
                                 onChange={(e) => {
                                   if (isDouble) updateField('buttonLink', e.target.value);
+                                  else if (isProducts) setEditingSection({ ...editingSection, productLink: e.target.value });
                                   else setEditingSection({ ...editingSection, buttonLink: e.target.value });
                                 }}
                                 className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
@@ -1061,187 +1070,66 @@ export default function HomepageBuilderPage() {
                                 value={currentButtonLink}
                                 onChange={(e) => {
                                   if (isDouble) updateField('buttonLink', e.target.value);
+                                  else if (isProducts) setEditingSection({ ...editingSection, productLink: e.target.value });
                                   else setEditingSection({ ...editingSection, buttonLink: e.target.value });
                                 }}
                                 className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                                placeholder="e.g. /products/new"
+                                placeholder={isProducts ? "e.g. /category/electronics" : "e.g. /products/new"}
                               />
                             )}
                           </div>
                         </div>
 
-                        {/* Text Alignment */}
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Text Alignment</label>
-                          <div className="flex gap-2">
-                             {[
-                               { id: "left", icon: AlignLeft },
-                               { id: "center", icon: AlignCenter },
-                               { id: "right", icon: AlignRight },
-                             ].map((align) => (
-                               <button
-                                 key={align.id}
-                                 type="button"
-                                 onClick={() => {
-                                   if (isDouble) {
-                                     updateField('alignment', align.id);
-                                   } else {
-                                     setEditingSection({ ...editingSection, alignment: align.id as any });
-                                   }
-                                 }}
-                                 className={cn(
-                                   "flex-1 py-3 rounded-xl border flex items-center justify-center transition-all",
-                                   currentAlignment === align.id ? "bg-brand-gold border-brand-gold text-white" : "bg-gray-50 border-transparent text-text-muted hover:bg-gray-100"
-                                 )}
-                               >
-                                 <align.icon className="w-5 h-5" />
-                               </button>
-                             ))}
+                        {!isProducts && (
+                          /* Text Alignment */
+                          <div className="space-y-2">
+                            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Text Alignment</label>
+                            <div className="flex gap-2">
+                               {[
+                                 { id: "left", icon: AlignLeft },
+                                 { id: "center", icon: AlignCenter },
+                                 { id: "right", icon: AlignRight },
+                               ].map((align) => (
+                                 <button
+                                   key={align.id}
+                                   type="button"
+                                   onClick={() => {
+                                     if (isDouble) {
+                                       updateField('alignment', align.id);
+                                     } else {
+                                       setEditingSection({ ...editingSection, alignment: align.id as any });
+                                     }
+                                   }}
+                                   className={cn(
+                                     "flex-1 py-3 rounded-xl border flex items-center justify-center transition-all",
+                                     currentAlignment === align.id ? "bg-brand-gold border-brand-gold text-white" : "bg-gray-50 border-transparent text-text-muted hover:bg-gray-100"
+                                   )}
+                                 >
+                                   <align.icon className="w-5 h-5" />
+                                 </button>
+                               ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })()}
                 </div>
               )}
 
-              {editingSection.count !== undefined && (
-                <div className="space-y-6 pt-4 border-t border-gray-100">
-                  <div className="space-y-3">
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Product Source</label>
-                    <div className="flex gap-2">
-                       {[
-                         { id: "all", label: "All Products" },
-                         { id: "category", label: "By Category" },
-                         { id: "manual", label: "Specific Products" },
-                       ].map((source) => (
-                         <button
-                           key={source.id}
-                           onClick={() => setEditingSection({ 
-                             ...editingSection, 
-                             source: source.id as any,
-                             selectedCategory: editingSection.selectedCategory || "",
-                             selectedProducts: source.id === "manual" ? (editingSection.selectedProducts || []) : editingSection.selectedProducts
-                           })}
-                           className={cn(
-                             "flex-1 py-2 px-3 rounded-xl border text-[10px] font-bold transition-all",
-                             editingSection.source === source.id ? "bg-brand-sidebar border-brand-sidebar text-white shadow-md" : "bg-gray-50 border-transparent text-text-muted hover:bg-gray-100"
-                           )}
-                         >
-                           {source.label}
-                         </button>
-                       ))}
-                    </div>
-                  </div>
-
-                  {editingSection.source === "category" && (
-                    <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Select Main Category</label>
-                        <select 
-                          value={editingSection.selectedCategory || ""}
-                          onChange={(e) => setEditingSection({ 
-                            ...editingSection, 
-                            selectedCategory: e.target.value,
-                            selectedSubcategory: "" // Reset subcategory when main changes
-                          })}
-                          className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                        >
-                          <option value="">Select Category</option>
-                          {availableCategories.map(cat => (
-                            <option key={cat.id} value={cat.name}>{cat.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {editingSection.selectedCategory && (
-                        <div className="space-y-2 animate-in slide-in-from-top-1 duration-200">
-                          <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Select Subcategory (Optional)</label>
-                          <select 
-                            value={editingSection.selectedSubcategory || ""}
-                            onChange={(e) => setEditingSection({ ...editingSection, selectedSubcategory: e.target.value })}
-                            className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                          >
-                            <option value="">All Subcategories</option>
-                            {dbSubcategories
-                              .filter(sub => {
-                                const parentCat = availableCategories.find(c => c.name === editingSection.selectedCategory);
-                                return sub.category_id === parentCat?.id;
-                              })
-                              .map(sub => (
-                                <option key={sub.id} value={sub.name}>{sub.name}</option>
-                              ))
-                            }
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {editingSection.source === "manual" && (
-                    <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
-                      <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Select Products</label>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" />
-                        <input 
-                          type="text" 
-                          placeholder="Search products..."
-                          value={productSearch}
-                          onChange={(e) => setProductSearch(e.target.value)}
-                          className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-transparent rounded-lg text-xs outline-none focus:bg-white focus:border-brand-gold transition-all"
-                        />
-                      </div>
-                      <div className="max-h-48 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-50">
-                        {dbProducts
-                          .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
-                          .map(product => {
-                            const isSelected = !!editingSection.selectedProducts?.includes(product.id);
-                            return (
-                              <label 
-                                key={product.id} 
-                                className={cn(
-                                  "flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors",
-                                  isSelected && "bg-brand-gold-light/20"
-                                )}
-                              >
-                                <input 
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={(e) => {
-                                    const isNowChecked = e.target.checked;
-                                    const current = editingSection.selectedProducts || [];
-                                    const updated = !isNowChecked 
-                                      ? current.filter(id => id !== product.id)
-                                      : [...current, product.id];
-                                    setEditingSection({ ...editingSection, selectedProducts: updated });
-                                  }}
-                                  className="accent-brand-gold"
-                                />
-                                <img src={product.image} className="w-8 h-8 rounded border border-gray-100 object-cover" />
-                                <div className="flex-1">
-                                  <p className="text-xs font-bold text-text-primary">{product.name}</p>
-                                  <p className="text-[8px] text-text-muted">{product.category} · Rs.{product.price}</p>
-                                </div>
-                                {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-brand-gold animate-pulse" />}
-                              </label>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Items to Show</label>
-                    <input 
-                      type="number" 
-                      value={editingSection.count || ""}
-                      onChange={(e) => setEditingSection({ ...editingSection, count: parseInt(e.target.value) || 0 })}
-                      className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
-                    />
-                    <p className="text-[10px] text-text-muted italic">Set the number of products to display in this grid.</p>
-                  </div>
-                </div>
-              )}
+          {/* Restored Items to Show UI */}
+          {editingSection.count !== undefined && (
+            <div className="space-y-2 pt-4 border-t border-gray-100">
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider">Items to Show</label>
+              <input 
+                type="number" 
+                value={editingSection.count || ""}
+                onChange={(e) => setEditingSection({ ...editingSection, count: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm font-medium outline-none focus:bg-white focus:border-brand-gold transition-all"
+              />
+              <p className="text-[10px] text-text-muted italic">Set the number of products to display in this grid.</p>
+            </div>
+          )}
 
               {editingSection.type === "categories" && (
                 <div className="space-y-6 pt-4 border-t border-gray-100">
@@ -1545,9 +1433,11 @@ function SectionItem({ section, onToggle, onEdit, onDelete }: {
                 Show {section.count} Products
               </span>
               <span className="text-[10px] font-medium text-text-muted italic">
-                from {section.source === "all" ? "All Products" : 
-                      section.source === "category" ? section.selectedCategory : 
-                      `${section.selectedProducts?.length || 0} hand-picked`}
+                {section.productType === "all" ? "All Products" : 
+                 section.productType === "category" ? `Category: ${section.productLink}` : 
+                 section.productType === "sale" ? `${section.productLink}% OFF` : 
+                 section.productType === "badge" ? `Badge: ${section.productLink}` :
+                 `Custom Link`}
               </span>
             </div>
           )}
