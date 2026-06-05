@@ -103,13 +103,47 @@ function OrdersList() {
   async function fetchOrderItems() {
     if (!selectedOrderId) return;
     setLoadingItems(true);
-    const { data, error } = await supabase
+    
+    // 1. Fetch order items safely
+    const { data: items, error: itemsError } = await supabase
       .from("order_items")
       .select("*")
       .eq("order_id", selectedOrderId);
-    if (!error && data) {
-      setOrderItems(data);
+      
+    if (itemsError || !items) {
+      console.error("Error fetching items:", itemsError);
+      setLoadingItems(false);
+      return;
     }
+
+    // 2. Fetch associated products to get old_price for discount calculation
+    const productIds = Array.from(new Set(items.map(i => i.product_id)));
+    if (productIds.length > 0) {
+      const { data: products, error: productsError } = await supabase
+        .from("products")
+        .select("id, price, old_price")
+        .in("id", productIds);
+        
+      if (!productsError && products) {
+        // Create a map for quick lookup
+        const productMap = products.reduce((acc: any, p: any) => {
+          acc[p.id] = p;
+          return acc;
+        }, {});
+        
+        // Merge product data into items
+        const mergedItems = items.map(item => ({
+          ...item,
+          products: productMap[item.product_id] || null
+        }));
+        setOrderItems(mergedItems);
+      } else {
+        setOrderItems(items);
+      }
+    } else {
+      setOrderItems(items);
+    }
+    
     setLoadingItems(false);
   }
 
@@ -1034,27 +1068,56 @@ function OrdersList() {
               </div>
 
               {/* Summary */}
-              <div className="bg-gray-900 text-white p-6 rounded-2xl space-y-3 shadow-xl">
-                <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-widest pb-3 border-b border-gray-800">
-                  <span>Items Ordered</span>
-                  <span>{selectedOrder.item_count} item{selectedOrder.item_count !== 1 ? "s" : ""}</span>
-                </div>
-                <div className="flex justify-between text-sm pt-2 text-gray-400">
-                  <span>Subtotal</span>
-                  <span className="font-bold">Rs.{(selectedOrder.subtotal || 0).toLocaleString()}</span>
-                </div>
-                {selectedOrder.discount_amount > 0 && (
-                  <div className="flex justify-between text-sm text-rose-400">
-                    <span>Discount</span>
-                    <span className="font-bold">-Rs.{selectedOrder.discount_amount.toLocaleString()}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-lg pt-3 mt-1 border-t border-gray-800">
-                  <span className="font-bold">Total Amount</span>
-                  <span className="font-bold text-brand-gold">
-                    {typeof selectedOrder.total === 'number' ? `Rs.${selectedOrder.total.toLocaleString()}` : selectedOrder.total}
-                  </span>
-                </div>
+              <div className="bg-gray-900 text-white p-6 rounded-2xl space-y-3 shadow-xl mt-6">
+                {(() => {
+                  // Calculate item-level discounts from the products join
+                  const itemTotalDiscount = orderItems.reduce((acc, item) => {
+                    const oldPrice = item.products?.old_price || item.price;
+                    if (oldPrice > item.price) {
+                      return acc + (oldPrice - item.price) * item.quantity;
+                    }
+                    return acc;
+                  }, 0);
+
+                  const totalOrderDiscount = (selectedOrder.discount_amount || 0) + itemTotalDiscount;
+                  const originalSubtotal = (selectedOrder.subtotal || 0) + itemTotalDiscount;
+
+                  return (
+                    <>
+                      <div className="flex justify-between text-base text-gray-400">
+                        <span>Subtotal</span>
+                        <span className="font-bold">Rs.{(originalSubtotal || 0).toLocaleString()}</span>
+                      </div>
+
+                      {totalOrderDiscount > 0 && (
+                        <>
+                          <div className="flex justify-between text-base text-rose-400">
+                            <span>Discount</span>
+                            <span className="font-bold">-Rs.{totalOrderDiscount.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-base text-gray-400">
+                            <span>Discounted Subtotal</span>
+                            <span className="font-bold">Rs.{(selectedOrder.subtotal || 0).toLocaleString()}</span>
+                          </div>
+                        </>
+                      )}
+
+                      <div className="flex justify-between text-base text-gray-400">
+                        <span>Shipping</span>
+                        <span className="font-bold">Rs.{selectedOrder.shipping_amount?.toLocaleString() || 0}</span>
+                      </div>
+                      
+                      <div className="pt-3 border-t border-white/10 mt-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-bold uppercase tracking-widest text-white/60">Order Total</span>
+                          <span className="text-2xl font-bold text-brand-gold">
+                            {typeof selectedOrder.total === 'number' ? `Rs.${selectedOrder.total.toLocaleString()}` : selectedOrder.total}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Update Order Status — inside scrollable area */}
