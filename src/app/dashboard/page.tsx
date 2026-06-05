@@ -7,7 +7,6 @@ import {
   DollarSign,
   ArrowUpRight,
   ArrowDownRight,
-  MoreHorizontal,
   ChevronRight,
   Package,
   Loader2
@@ -77,8 +76,8 @@ export default function Dashboard() {
         { data: rawCustomers },
         { data: rawOrders },
       ] = await Promise.all([
-        supabase.from("customers").select("*", { count: "exact", head: true }),
-        supabase.from("customers").select("*", { count: "exact", head: true }).eq("status", "Active"),
+        supabase.from("products").select("*", { count: "exact", head: true }),
+        supabase.from("products").select("*", { count: "exact", head: true }).eq("status", "Active"),
         supabase.from("customers").select("*", { count: "exact", head: true }),
         supabase.from("customers").select("created_at"),
         supabase.from("orders").select("id, created_at, total, status, customer:customers(full_name), subtotal").order("created_at", { ascending: false }),
@@ -185,37 +184,58 @@ export default function Dashboard() {
       // --- Recent Orders (already sorted by created_at desc from query) ---
       setRecentOrders(orders.slice(0, 5));
 
-      // --- Top Selling Products ---
-      // Note: New schema doesn't have 'items' array in 'orders' table directly
-      // We should use 'order_items' for this, but for now we'll skip or use fallback
-      let freq: Record<string, number> = {};
-      // If we joined order_items we could do this properly. 
-      // For now, let's just make sure it doesn't crash if items is missing.
-      orders.forEach(o => {
-        if (Array.isArray((o as any).items)) {
-          (o as any).items.forEach((item: string) => {
-            freq[item] = (freq[item] || 0) + 1;
-          });
+      // --- Top Selling Products (from order_items) ---
+      // Get all order_items for non-cancelled orders, aggregate by product_id
+      const cancelledOrderIds = orders
+        .filter(o => o.status === "Cancelled")
+        .map(o => o.id);
+
+      const { data: rawOrderItems } = await supabase
+        .from("order_items")
+        .select("product_id, product_name, quantity, price, total_price, image, order_id");
+
+      const orderItems = (rawOrderItems ?? []).filter(
+        item => !cancelledOrderIds.includes(item.order_id)
+      );
+
+      // Aggregate quantities and revenue per product
+      const productMap: Record<string, { id: string; name: string; qty: number; revenue: number; image: string }> = {};
+      orderItems.forEach(item => {
+        const pid = item.product_id as string;
+        if (!productMap[pid]) {
+          productMap[pid] = {
+            id: pid,
+            name: item.product_name ?? "Unknown",
+            qty: 0,
+            revenue: 0,
+            image: item.image ?? "",
+          };
         }
+        productMap[pid].qty += Number(item.quantity) || 0;
+        productMap[pid].revenue += Number(item.total_price) || 0;
       });
 
-      const topNames = Object.entries(freq).sort(([, a], [, b]) => b - a).slice(0, 5);
-      if (topNames.length > 0) {
-        const { data: prods } = await supabase
-          .from("products")
-          .select("name, category, image, price")
-          .in("name", topNames.map(([n]) => n));
+      const topEntries = Object.values(productMap)
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 5);
+
+      if (topEntries.length > 0) {
+        // Fetch categories for top products
+        const topIds = topEntries.map(p => p.id).filter(Boolean);
+        const { data: categoryData } = topIds.length > 0
+          ? await supabase.from("products").select("id, category").in("id", topIds)
+          : { data: [] };
+        const categoryMap: Record<string, string> = {};
+        (categoryData ?? []).forEach((p: any) => { categoryMap[p.id] = p.category ?? "—"; });
+
         setTopProducts(
-          topNames.map(([name, sales]) => {
-            const p = (prods ?? []).find(x => x.name === name);
-            return {
-              name,
-              category: p?.category ?? "—",
-              sales,
-              revenue: `Rs.${Math.round((p?.price ?? 0) * sales).toLocaleString()}`,
-              image: p?.image ?? "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=100&q=80",
-            };
-          })
+          topEntries.map(p => ({
+            name: p.name,
+            category: categoryMap[p.id] ?? "—",
+            sales: p.qty,
+            revenue: `Rs.${Math.round(p.revenue).toLocaleString()}`,
+            image: p.image || "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=100&q=80",
+          }))
         );
       } else {
         setTopProducts([]);
@@ -494,19 +514,18 @@ export default function Dashboard() {
                   <th className="px-6 py-4">Date</th>
                   <th className="px-6 py-4">Total</th>
                   <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-gray-50">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center">
+                    <td colSpan={5} className="px-6 py-10 text-center">
                       <Loader2 className="w-6 h-6 text-brand-gold animate-spin mx-auto" />
                     </td>
                   </tr>
                 ) : recentOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-text-muted font-bold">No orders yet.</td>
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-text-muted font-bold">No orders yet.</td>
                   </tr>
                 ) : (
                   recentOrders.map(order => (
@@ -523,11 +542,6 @@ export default function Dashboard() {
                         <span className={cn("status-badge", statusStyles[order.status as keyof typeof statusStyles])}>
                           {order.status}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button className="p-1.5 text-text-muted hover:text-brand-gold transition-colors">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
                       </td>
                     </tr>
                   ))
