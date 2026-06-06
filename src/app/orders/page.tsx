@@ -104,43 +104,15 @@ function OrdersList() {
     if (!selectedOrderId) return;
     setLoadingItems(true);
     
-    // 1. Fetch order items safely
+    // Fetch order items with associated product data (price, old_price)
     const { data: items, error: itemsError } = await supabase
       .from("order_items")
-      .select("*")
+      .select("*, products(id, price, old_price)")
       .eq("order_id", selectedOrderId);
       
-    if (itemsError || !items) {
+    if (itemsError) {
       console.error("Error fetching items:", itemsError);
-      setLoadingItems(false);
-      return;
-    }
-
-    // 2. Fetch associated products to get old_price for discount calculation
-    const productIds = Array.from(new Set(items.map(i => i.product_id)));
-    if (productIds.length > 0) {
-      const { data: products, error: productsError } = await supabase
-        .from("products")
-        .select("id, price, old_price")
-        .in("id", productIds);
-        
-      if (!productsError && products) {
-        // Create a map for quick lookup
-        const productMap = products.reduce((acc: any, p: any) => {
-          acc[p.id] = p;
-          return acc;
-        }, {});
-        
-        // Merge product data into items
-        const mergedItems = items.map(item => ({
-          ...item,
-          products: productMap[item.product_id] || null
-        }));
-        setOrderItems(mergedItems);
-      } else {
-        setOrderItems(items);
-      }
-    } else {
+    } else if (items) {
       setOrderItems(items);
     }
     
@@ -217,12 +189,11 @@ function OrdersList() {
       return;
     }
 
-    // 1. Fetch all items and products for these orders to calculate discounts
     const orderIds = filteredOrders.map(o => o.id);
     
     const { data: allItems, error: itemsError } = await supabase
       .from("order_items")
-      .select("*")
+      .select("*, products(id, price, old_price)")
       .in("order_id", orderIds);
       
     if (itemsError) {
@@ -231,27 +202,9 @@ function OrdersList() {
       return;
     }
 
-    const itemProductIds = Array.from(new Set(allItems.map(i => i.product_id)));
-    const { data: itemsProducts, error: productsError } = await supabase
-      .from("products")
-      .select("id, price, old_price")
-      .in("id", itemProductIds);
-      
-    if (productsError) {
-      console.error("Error fetching products for export:", productsError);
-    }
-
-    const productMap = (itemsProducts || []).reduce((acc: any, p: any) => {
-      acc[p.id] = p;
-      return acc;
-    }, {});
-
-    const orderItemsMap = allItems.reduce((acc: any, item: any) => {
+    const orderItemsMap = (allItems || []).reduce((acc: any, item: any) => {
       if (!acc[item.order_id]) acc[item.order_id] = [];
-      acc[item.order_id].push({
-        ...item,
-        products: productMap[item.product_id] || null
-      });
+      acc[item.order_id].push(item);
       return acc;
     }, {});
 
