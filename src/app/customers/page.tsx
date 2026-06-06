@@ -343,13 +343,34 @@ export default function CustomersPage() {
                     <h4 className="text-xl font-bold text-text-primary">{selectedCustomer.full_name || selectedCustomer.name}</h4>
                     <BadgeCheck className="w-5 h-5 text-brand-gold flex-shrink-0" />
                   </div>
-                  <div className="flex gap-2 mt-4">
-                    <button className="p-2 bg-gray-50 rounded-lg text-text-muted hover:text-brand-gold transition-colors border border-gray-100 shadow-sm">
-                      <Mail className="w-4 h-4" />
-                    </button>
-                    <button className="p-2 bg-gray-50 rounded-lg text-text-muted hover:text-brand-gold transition-colors border border-gray-100 shadow-sm">
-                      <Phone className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-center gap-3 mt-4">
+                    {selectedCustomer.email ? (
+                      <a 
+                        href={`mailto:${selectedCustomer.email}`}
+                        className="p-2 bg-gray-50 rounded-lg text-text-muted hover:text-brand-gold transition-colors border border-gray-100 shadow-sm flex items-center justify-center"
+                        title="Send Email"
+                      >
+                        <Mail className="w-4 h-4" />
+                      </a>
+                    ) : (
+                      <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-full border border-rose-100 uppercase tracking-widest">
+                        no email
+                      </span>
+                    )}
+
+                    {selectedCustomer.phone ? (
+                      <a 
+                        href={`tel:${selectedCustomer.phone}`}
+                        className="p-2 bg-gray-50 rounded-lg text-text-muted hover:text-brand-gold transition-colors border border-gray-100 shadow-sm flex items-center justify-center"
+                        title="Call Customer"
+                      >
+                        <Phone className="w-4 h-4" />
+                      </a>
+                    ) : (
+                      <span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-full border border-rose-100 uppercase tracking-widest">
+                        no number
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
