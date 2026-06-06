@@ -115,7 +115,45 @@ export default function AddProductPage() {
   const [stock, setStock] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showDiscardModal, setShowDiscardModal] = useState(false);
   const router = useRouter();
+
+  // Browser-level guard (refresh / tab close)
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const handleNavigateAway = () => {
+    if (isDirty) {
+      setShowDiscardModal(true);
+    } else {
+      router.push("/products");
+    }
+  };
+
+  // Browser back button support
+  useEffect(() => {
+    if (isDirty) {
+      window.history.pushState(null, "", window.location.href);
+      const handlePopState = (e: PopStateEvent) => {
+        if (isDirty) {
+          // Push state again to stay on page
+          window.history.pushState(null, "", window.location.href);
+          setShowDiscardModal(true);
+        }
+      };
+      window.addEventListener("popstate", handlePopState);
+      return () => window.removeEventListener("popstate", handlePopState);
+    }
+  }, [isDirty]);
 
   // Derived categories object for easy lookup
   const categories: Record<string, string[]> = {};
@@ -223,6 +261,7 @@ export default function AddProductPage() {
       setImageFiles([...imageFiles, ...newFiles]);
       const urls = newFiles.map(file => URL.createObjectURL(file));
       setImagePreviews([...imagePreviews, ...urls]);
+      setIsDirty(true);
     }
   };
 
@@ -231,6 +270,7 @@ export default function AddProductPage() {
     if (file) {
       setSizeChartFile(file);
       setSizeChartPreview(URL.createObjectURL(file));
+      setIsDirty(true);
     }
   };
 
@@ -238,16 +278,19 @@ export default function AddProductPage() {
     if (newSize && !sizes.includes(newSize)) {
       setSizes([...sizes, newSize]);
       setNewSize("");
+      setIsDirty(true);
     }
   };
 
   const removeSize = (size: string) => {
     setSizes(sizes.filter(s => s !== size));
+    setIsDirty(true);
   };
 
   const addColor = (colorName: string) => {
     if (!colors.includes(colorName)) {
       setColors([...colors, colorName]);
+      setIsDirty(true);
     }
     setColorSearch("");
     setShowColorSuggestions(false);
@@ -255,6 +298,7 @@ export default function AddProductPage() {
 
   const removeColor = (color: string) => {
     setColors(colors.filter(c => c !== color));
+    setIsDirty(true);
   };
 
   const filteredColorSuggestions = colorSearch.trim().length > 0
@@ -268,6 +312,7 @@ export default function AddProductPage() {
       ...variantInventory,
       [key]: qty
     });
+    setIsDirty(true);
   };
 
   const handleSubmit = async () => {
@@ -369,6 +414,10 @@ export default function AddProductPage() {
         }
       });
 
+      const badges = [];
+      if (uploadedImageUrls.length > 0) badges.push("NEW");
+      if (isOnSale) badges.push("SALE");
+
       const { error } = await supabase.from("products").insert({
         id: productId,
         name,
@@ -381,7 +430,7 @@ export default function AddProductPage() {
         stock: stockNum,
         stock_status: stockStatus,
         status: "Active",
-        badges: uploadedImageUrls.length > 0 ? ["NEW"] : [],
+        badges: badges,
         image: uploadedImageUrls[0] || "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=100&h=100&fit=crop",
         images: uploadedImageUrls,
         size_chart: uploadedSizeChartUrl,
@@ -405,12 +454,13 @@ export default function AddProductPage() {
       {/* Top Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link 
-            href="/products" 
+          <button
+            type="button"
+            onClick={handleNavigateAway}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-text-muted"
           >
             <ChevronLeft className="w-5 h-5" />
-          </Link>
+          </button>
           <div>
             <h2 className="text-2xl font-bold text-text-primary">Add New Product</h2>
             <div className="flex items-center gap-2 mt-1">
@@ -424,7 +474,7 @@ export default function AddProductPage() {
         <div className="flex items-center gap-3">
           <button 
             type="button"
-            onClick={() => router.push("/products")}
+            onClick={handleNavigateAway}
             className="px-6 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-text-secondary hover:bg-gray-50 transition-colors"
           >
             Discard
@@ -458,6 +508,7 @@ export default function AddProductPage() {
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value);
+                    setIsDirty(true);
                     if (errors.name) setErrors(prev => ({ ...prev, name: "" }));
                   }}
                   placeholder="e.g. Premium Silk Evening Gown"
@@ -474,7 +525,10 @@ export default function AddProductPage() {
                 <textarea 
                   rows={6}
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setIsDirty(true);
+                  }}
                   placeholder="Describe the product material, fit, and style..."
                   className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all resize-none"
                 />
@@ -497,7 +551,10 @@ export default function AddProductPage() {
                   On Sale
                 </span>
                 <label className="switch">
-                  <input type="checkbox" onChange={(e) => setIsOnSale(e.target.checked)} />
+                  <input type="checkbox" checked={isOnSale} onChange={(e) => {
+                    setIsOnSale(e.target.checked);
+                    setIsDirty(true);
+                  }} />
                   <span className="slider"></span>
                 </label>
               </div>
@@ -515,6 +572,7 @@ export default function AddProductPage() {
                     value={price}
                     onChange={(e) => {
                       setPrice(e.target.value);
+                      setIsDirty(true);
                       if (errors.price) setErrors(prev => ({ ...prev, price: "" }));
                     }}
                     placeholder="0.00"
@@ -535,7 +593,10 @@ export default function AddProductPage() {
                     <input 
                       type="number" 
                       value={oldPrice}
-                      onChange={(e) => setOldPrice(e.target.value)}
+                      onChange={(e) => {
+                        setOldPrice(e.target.value);
+                        setIsDirty(true);
+                      }}
                       placeholder="0.00"
                       className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold line-through"
                     />
@@ -551,6 +612,7 @@ export default function AddProductPage() {
                     value={stock}
                     onChange={(e) => {
                       setStock(e.target.value);
+                      setIsDirty(true);
                       if (errors.stock) setErrors(prev => ({ ...prev, stock: "" }));
                     }}
                     placeholder="0"
@@ -758,6 +820,7 @@ export default function AddProductPage() {
                       setImagePreviews(imagePreviews.filter((_, idx) => idx !== i));
                       const remainingFiles = imageFiles.filter((_, idx) => idx !== i);
                       setImageFiles(remainingFiles);
+                      setIsDirty(true);
                       if (remainingFiles.length === 0) {
                         setErrors(prev => ({ ...prev, images: "At least one product image is required" }));
                       }
@@ -798,6 +861,7 @@ export default function AddProductPage() {
                   onClick={() => {
                     setSizeChartPreview(null);
                     setSizeChartFile(null);
+                    setIsDirty(true);
                   }}
                   className="absolute top-2 right-2 p-1.5 bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                 >
@@ -831,6 +895,7 @@ export default function AddProductPage() {
                     onChange={(e) => {
                       setSelectedCategory(e.target.value);
                       setSelectedSubcategory(""); // Reset subcategory
+                      setIsDirty(true);
                     }}
                     className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all appearance-none cursor-pointer pr-10 font-medium"
                   >
@@ -851,6 +916,7 @@ export default function AddProductPage() {
                     value={selectedSubcategory}
                     onChange={(e) => {
                       setSelectedSubcategory(e.target.value);
+                      setIsDirty(true);
                       if (errors.subcategory) setErrors(prev => ({ ...prev, subcategory: "" }));
                     }}
                     className={cn(
@@ -874,6 +940,40 @@ export default function AddProductPage() {
           </div>
         </div>
       </div>
+
+      {/* Discard Confirmation Modal */}
+      {showDiscardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-brand-sidebar/40 backdrop-blur-sm" onClick={() => setShowDiscardModal(false)} />
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-fade-in">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-text-primary mb-2">Discard Changes?</h3>
+              <p className="text-sm text-text-muted leading-relaxed">
+                You have unsaved changes. Are you sure you want to discard them?
+              </p>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={() => setShowDiscardModal(false)}
+                className="flex-1 px-6 py-4 text-sm font-bold text-text-muted hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setIsDirty(false); router.push("/products"); }}
+                className="flex-1 px-6 py-4 text-sm font-bold text-rose-500 hover:bg-rose-50 transition-colors border-l border-gray-100"
+              >
+                Discard Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -51,7 +51,46 @@ export default function EditProductPage() {
   const [dbSubcategories, setDbSubcategories] = useState<Subcategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [existingBadges, setExistingBadges] = useState<string[]>([]);
+  const [isDirty, setIsDirty] = useState(false);
+  const [showDiscardModal, setShowDiscardModal] = useState(false);
   const router = useRouter();
+
+  // Browser-level guard (refresh / tab close)
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const handleNavigateAway = () => {
+    if (isDirty) {
+      setShowDiscardModal(true);
+    } else {
+      router.push("/products");
+    }
+  };
+
+  // Browser back button support
+  useEffect(() => {
+    if (isDirty) {
+      window.history.pushState(null, "", window.location.href);
+      const handlePopState = (e: PopStateEvent) => {
+        if (isDirty) {
+          // Push state again to stay on page
+          window.history.pushState(null, "", window.location.href);
+          setShowDiscardModal(true);
+        }
+      };
+      window.addEventListener("popstate", handlePopState);
+      return () => window.removeEventListener("popstate", handlePopState);
+    }
+  }, [isDirty]);
 
   // Variants state
   const [sizes, setSizes] = useState<string[]>(["S", "M", "L", "XL"]);
@@ -166,6 +205,7 @@ export default function EditProductPage() {
       setSizeChart(p.size_chart || null);
       setOriginalSizeChart(p.size_chart || null);
       if (p.sizes && p.sizes.length > 0) setSizes(p.sizes);
+      if (p.badges) setExistingBadges(p.badges);
       if (p.colors && p.colors.length > 0) {
         setColors(p.colors.map((c: any) => {
           if (typeof c === 'object' && c !== null) {
@@ -215,6 +255,7 @@ export default function EditProductPage() {
       const url = URL.createObjectURL(file);
       setNewImageFiles([...newImageFiles, { file, url }]);
       setImages([...images, url]);
+      setIsDirty(true);
     }
   };
 
@@ -223,6 +264,7 @@ export default function EditProductPage() {
     if (file) {
       setNewSizeChartFile(file);
       setSizeChart(URL.createObjectURL(file));
+      setIsDirty(true);
     }
   };
 
@@ -230,16 +272,19 @@ export default function EditProductPage() {
     if (newSize && !sizes.includes(newSize)) {
       setSizes([...sizes, newSize]);
       setNewSize("");
+      setIsDirty(true);
     }
   };
 
   const removeSize = (size: string) => {
     setSizes(sizes.filter(s => s !== size));
+    setIsDirty(true);
   };
 
   const addColor = (colorName: string) => {
     if (!colors.includes(colorName)) {
       setColors([...colors, colorName]);
+      setIsDirty(true);
     }
     setColorSearch("");
     setShowColorSuggestions(false);
@@ -247,6 +292,7 @@ export default function EditProductPage() {
 
   const removeColor = (color: string) => {
     setColors(colors.filter(c => c !== color));
+    setIsDirty(true);
   };
 
   const filteredColorSuggestions = colorSearch.trim().length > 0
@@ -260,6 +306,7 @@ export default function EditProductPage() {
       ...variantInventory,
       [key]: qty
     });
+    setIsDirty(true);
   };
 
   const handleUpdate = async () => {
@@ -384,6 +431,15 @@ export default function EditProductPage() {
           sizes,
           colors: mappedColors,
           variant_inventory: filteredInventory,
+          badges: (() => {
+            let updatedBadges = [...existingBadges];
+            if (isOnSale && !updatedBadges.includes("SALE")) {
+              updatedBadges.push("SALE");
+            } else if (!isOnSale && updatedBadges.includes("SALE")) {
+              updatedBadges = updatedBadges.filter(b => b !== "SALE");
+            }
+            return updatedBadges;
+          })(),
         })
         .eq("id", productId);
 
@@ -433,12 +489,13 @@ export default function EditProductPage() {
       {/* Top Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link 
-            href="/products" 
+          <button
+            type="button"
+            onClick={handleNavigateAway}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-text-muted"
           >
             <ChevronLeft className="w-5 h-5" />
-          </Link>
+          </button>
           <div>
             <h2 className="text-2xl font-bold text-text-primary">Edit Product</h2>
             <div className="flex items-center gap-2 mt-1">
@@ -450,7 +507,11 @@ export default function EditProductPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button className="px-6 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-text-secondary hover:bg-gray-50 transition-colors">
+          <button
+            type="button"
+            onClick={handleNavigateAway}
+            className="px-6 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold text-text-secondary hover:bg-gray-50 transition-colors"
+          >
             Discard
           </button>
           <button 
@@ -480,7 +541,7 @@ export default function EditProductPage() {
                 <input 
                   type="text" 
                   value={productName}
-                  onChange={(e) => setProductName(e.target.value)}
+                  onChange={(e) => { setProductName(e.target.value); setIsDirty(true); }}
                   placeholder="e.g. Premium Silk Evening Gown"
                   className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all"
                 />
@@ -491,7 +552,10 @@ export default function EditProductPage() {
                 <textarea 
                   rows={6}
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setIsDirty(true);
+                  }}
                   placeholder="Describe the product material, fit, and style..."
                   className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all resize-none"
                 />
@@ -514,7 +578,10 @@ export default function EditProductPage() {
                   On Sale
                 </span>
                 <label className="switch">
-                  <input type="checkbox" checked={isOnSale} onChange={(e) => setIsOnSale(e.target.checked)} />
+                  <input type="checkbox" checked={isOnSale} onChange={(e) => {
+                    setIsOnSale(e.target.checked);
+                    setIsDirty(true);
+                  }} />
                   <span className="slider"></span>
                 </label>
               </div>
@@ -530,7 +597,10 @@ export default function EditProductPage() {
                   <input 
                     type="number" 
                     value={basePrice}
-                    onChange={(e) => setBasePrice(Number(e.target.value))}
+                    onChange={(e) => {
+                      setBasePrice(Number(e.target.value));
+                      setIsDirty(true);
+                    }}
                     placeholder="0.00"
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold"
                   />
@@ -545,7 +615,10 @@ export default function EditProductPage() {
                     <input 
                       type="number" 
                       value={oldPrice}
-                      onChange={(e) => setOldPrice(Number(e.target.value))}
+                      onChange={(e) => {
+                        setOldPrice(Number(e.target.value));
+                        setIsDirty(true);
+                      }}
                       placeholder="0.00"
                       className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all font-bold line-through"
                     />
@@ -559,7 +632,10 @@ export default function EditProductPage() {
                   <input 
                     type="number" 
                     value={totalStock}
-                    onChange={(e) => setTotalStock(Number(e.target.value))}
+                    onChange={(e) => {
+                      setTotalStock(Number(e.target.value));
+                      setIsDirty(true);
+                    }}
                     placeholder="0"
                     disabled={sizes.length > 0 || colors.length > 0}
                     className={cn(
@@ -749,6 +825,7 @@ export default function EditProductPage() {
                       const deletedUrl = images[i];
                       setImages(images.filter((_, idx) => idx !== i));
                       setNewImageFiles(newImageFiles.filter(item => item.url !== deletedUrl));
+                      setIsDirty(true);
                     }}
                     className="absolute top-2 right-2 p-1 bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                   >
@@ -776,7 +853,10 @@ export default function EditProductPage() {
               <div className="relative aspect-[3/4] rounded-xl overflow-hidden border border-gray-100 bg-gray-50 group">
                 <img src={sizeChart} alt="size chart" className="w-full h-full object-cover" />
                 <button 
-                  onClick={() => setSizeChart(null)}
+                  onClick={() => {
+                    setSizeChart(null);
+                    setIsDirty(true);
+                  }}
                   className="absolute top-2 right-2 p-1.5 bg-black/40 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -809,6 +889,7 @@ export default function EditProductPage() {
                     onChange={(e) => {
                       setSelectedCategory(e.target.value);
                       setSelectedSubcategory(""); // Reset subcategory
+                      setIsDirty(true);
                     }}
                     className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all appearance-none cursor-pointer pr-10 font-medium"
                   >
@@ -827,7 +908,10 @@ export default function EditProductPage() {
                 <div className="relative group">
                   <select 
                     value={selectedSubcategory}
-                    onChange={(e) => setSelectedSubcategory(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedSubcategory(e.target.value);
+                      setIsDirty(true);
+                    }}
                     className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all appearance-none cursor-pointer pr-10 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={!selectedCategory}
                   >
@@ -845,6 +929,40 @@ export default function EditProductPage() {
           </div>
         </div>
       </div>
+
+      {/* Discard Confirmation Modal */}
+      {showDiscardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-brand-sidebar/40 backdrop-blur-sm" onClick={() => setShowDiscardModal(false)} />
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-fade-in">
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <svg className="w-8 h-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-text-primary mb-2">Discard Changes?</h3>
+              <p className="text-sm text-text-muted leading-relaxed">
+                You have unsaved changes. Are you sure you want to discard them?
+              </p>
+            </div>
+            <div className="flex border-t border-gray-100">
+              <button
+                onClick={() => setShowDiscardModal(false)}
+                className="flex-1 px-6 py-4 text-sm font-bold text-text-muted hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setIsDirty(false); router.push("/products"); }}
+                className="flex-1 px-6 py-4 text-sm font-bold text-rose-500 hover:bg-rose-50 transition-colors border-l border-gray-100"
+              >
+                Discard Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && (
         <div className="fixed inset-0 z-[100] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">

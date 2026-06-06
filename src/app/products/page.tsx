@@ -83,26 +83,9 @@ export default function ProductsPage() {
   }
 
   const getProductBadges = (product: Product) => {
-    const list: string[] = [];
-    
-    // 1. NEW - Product added within last 30 days
-    const createdDate = new Date(product.created_at).getTime();
-    const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
-    if (Date.now() - createdDate < thirtyDaysInMs) {
-      list.push("NEW");
-    }
-
-    // 2. SALE - on sale (old_price and new price both exist, and old_price > price)
-    if (product.old_price && product.old_price > product.price) {
-      list.push("SALE");
-    }
-
-    // 3. FLASH - product added in flash sale and flash sale is active
-    if (flashSaleActive && flashSaleProductIds.includes(product.id)) {
-      list.push("FLASH");
-    }
-
-    return list;
+    // Return badges from the database column if they exist, otherwise fallback to an empty array
+    // The previous dynamic calculation is replaced to strictly follow the database badges column as requested
+    return product.badges || [];
   };
 
   useEffect(() => {
@@ -488,7 +471,9 @@ export default function ProductsPage() {
                               {getProductBadges(product).map(badge => (
                                 <span key={badge} className={cn(
                                   "px-1.5 py-0.5 rounded text-[8px] font-bold text-white",
-                                  badge === "NEW" ? "bg-teal-500" : badge === "SALE" ? "bg-rose-500" : "bg-orange-500"
+                                  badge === "NEW" ? "bg-teal-500" : 
+                                  badge === "SALE" ? "bg-rose-500" : 
+                                  badge === "FLASH" ? "bg-orange-500" : "bg-gray-500"
                                 )}>
                                   {badge}
                                 </span>
