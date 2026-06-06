@@ -52,21 +52,45 @@ export default function CategoriesPage() {
   const fetchCategories = async () => {
     const { data: cats } = await supabase.from('categories').select('*').order('display_order', { ascending: true });
     const { data: subs } = await supabase.from('subcategories').select('*').order('display_order', { ascending: true });
+    const { data: products } = await supabase.from('products').select('category, subcategory');
     
     if (cats) {
-      setCategories(cats);
+      // Calculate counts from products
+      const categoryCounts: Record<string, number> = {};
+      const subcategoryCounts: Record<string, number> = {};
+      
+      products?.forEach(p => {
+        if (p.category) {
+          categoryCounts[p.category] = (categoryCounts[p.category] || 0) + 1;
+        }
+        if (p.subcategory) {
+          subcategoryCounts[p.subcategory] = (subcategoryCounts[p.subcategory] || 0) + 1;
+        }
+      });
+
+      const updatedCats = cats.map(cat => ({
+        ...cat,
+        count: categoryCounts[cat.name] || 0
+      }));
+
+      setCategories(updatedCats);
       
       if (subs) {
+        const updatedSubs = subs.map(sub => ({
+          ...sub,
+          count: subcategoryCounts[sub.name] || 0
+        }));
+
         const structured: { [key: string]: any[] } = {};
-        cats.forEach(cat => {
-          const rootSubs = subs.filter(s => s.category_id === cat.id && !s.parent_id);
+        updatedCats.forEach(cat => {
+          const rootSubs = updatedSubs.filter(s => s.category_id === cat.id && !s.parent_id);
           structured[cat.name] = rootSubs;
         });
         setSubcategories(structured);
       }
 
-      if (cats.length > 0 && !cats.find(c => c.name === selectedCatName)) {
-        setSelectedCatName(cats[0].name);
+      if (updatedCats.length > 0 && !updatedCats.find(c => c.name === selectedCatName)) {
+        setSelectedCatName(updatedCats[0].name);
       }
     }
   };
