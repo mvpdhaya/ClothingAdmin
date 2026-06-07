@@ -22,7 +22,7 @@ function cn(...inputs: ClassValue[]) {
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCatName, setSelectedCatName] = useState("Clothing");
+  const [selectedCatId, setSelectedCatId] = useState("");
   const [subcategories, setSubcategories] = useState<{ [key: string]: any[] }>({});
   
   // Modal State
@@ -70,7 +70,7 @@ export default function CategoriesPage() {
 
       const updatedCats = cats.map(cat => ({
         ...cat,
-        count: categoryCounts[cat.name] || 0
+        count: categoryCounts[cat.id] || 0
       }));
 
       setCategories(updatedCats);
@@ -78,19 +78,19 @@ export default function CategoriesPage() {
       if (subs) {
         const updatedSubs = subs.map(sub => ({
           ...sub,
-          count: subcategoryCounts[sub.name] || 0
+          count: subcategoryCounts[sub.id] || 0
         }));
 
         const structured: { [key: string]: any[] } = {};
         updatedCats.forEach(cat => {
           const rootSubs = updatedSubs.filter(s => s.category_id === cat.id && !s.parent_id);
-          structured[cat.name] = rootSubs;
+          structured[cat.id] = rootSubs;
         });
         setSubcategories(structured);
       }
 
-      if (updatedCats.length > 0 && !updatedCats.find(c => c.name === selectedCatName)) {
-        setSelectedCatName(updatedCats[0].name);
+      if (updatedCats.length > 0 && !updatedCats.find(c => c.id === selectedCatId)) {
+        setSelectedCatId(updatedCats[0].id);
       }
     }
   };
@@ -139,9 +139,6 @@ export default function CategoriesPage() {
       }
       // Update existing
       await supabase.from('categories').update({ name: newName, icon_name: "none", display_order: newDisplayOrder }).eq('id', editingCatId);
-      if (selectedCatName === categories.find(c => c.id === editingCatId)?.name) {
-        setSelectedCatName(newName);
-      }
     } else {
       // Check for duplicate display order
       const isDuplicate = categories.some(c => c.display_order === newDisplayOrder);
@@ -171,7 +168,7 @@ export default function CategoriesPage() {
 
   const handleAddSubcategory = async () => {
     if (!newSubName) return;
-    const cat = categories.find(c => c.name === selectedCatName);
+    const cat = categories.find(c => c.id === selectedCatId);
     if (!cat) return;
 
     if (newSubDisplayOrder < 1) {
@@ -180,7 +177,7 @@ export default function CategoriesPage() {
     }
 
     // Check for duplicate display order in the same category
-    const currentSubs = subcategories[selectedCatName] || [];
+    const currentSubs = subcategories[selectedCatId] || [];
     const isDuplicate = currentSubs.some(s => s.display_order === newSubDisplayOrder);
     if (isDuplicate) {
       setSubError(`Order ${newSubDisplayOrder} is taken.`);
@@ -220,7 +217,7 @@ export default function CategoriesPage() {
     }
 
     // Check for duplicate display order (excluding self)
-    const currentSubs = subcategories[selectedCatName] || [];
+    const currentSubs = subcategories[selectedCatId] || [];
     const isDuplicate = currentSubs.some(s => s.display_order === editSubDisplayOrder && s.id !== editingSub.id);
     if (isDuplicate) {
       setEditSubError(`Display order ${editSubDisplayOrder} is already taken.`);
@@ -254,12 +251,12 @@ export default function CategoriesPage() {
           <h3 className="text-[10px] font-bold text-text-muted tracking-widest uppercase ml-1">Main Categories</h3>
           <div className="card p-2 space-y-1">
             {categories.map((cat) => {
-              const isActive = selectedCatName === cat.name;
+              const isActive = selectedCatId === cat.id;
               
               return (
                 <div
                   key={cat.id}
-                  onClick={() => setSelectedCatName(cat.name)}
+                  onClick={() => setSelectedCatId(cat.id)}
                   className={cn(
                     "w-full flex items-center gap-4 p-4 rounded-xl transition-all group cursor-pointer relative h-[72px]",
                     isActive ? "bg-brand-gold-light text-brand-gold shadow-sm" : "hover:bg-gray-50 text-text-secondary"
@@ -308,13 +305,13 @@ export default function CategoriesPage() {
         <div className="lg:col-span-8 space-y-4">
           <div className="flex justify-between items-end ml-1">
             <h3 className="text-[10px] font-bold text-text-muted tracking-widest uppercase">
-              Subcategories in <span className="text-text-primary">{selectedCatName}</span>
+              Subcategories in <span className="text-text-primary">{categories.find(c => c.id === selectedCatId)?.name || "Category"}</span>
             </h3>
             <span className="text-[10px] font-bold text-text-muted">DRAG TO REORDER</span>
           </div>
           
           <div className="card space-y-2">
-            {(subcategories[selectedCatName] || []).map((sub: any, i: number) => {
+            {(subcategories[selectedCatId] || []).map((sub: any, i: number) => {
               return (
                 <div key={sub.id} className="space-y-2">
                   <div 
@@ -352,7 +349,7 @@ export default function CategoriesPage() {
               <div className="flex gap-2">
                 <input 
                   type="text" 
-                  placeholder={`Add new subcategory to ${selectedCatName}...`}
+                  placeholder={`Add new subcategory to ${categories.find(c => c.id === selectedCatId)?.name || "category"}...`}
                   value={newSubName}
                   onChange={(e) => setNewSubName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddSubcategory()}

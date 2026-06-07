@@ -200,8 +200,8 @@ export default function EditProductPage() {
       }
       setImages(loadedImages);
       setOriginalImages(loadedImages);
-      setSelectedCategory(p.category);
-      setSelectedSubcategory(p.subcategory);
+      setSelectedCategory(p.category || "");
+      setSelectedSubcategory(p.subcategory || "");
       setSizeChart(p.size_chart || null);
       setOriginalSizeChart(p.size_chart || null);
       if (p.sizes && p.sizes.length > 0) setSizes(p.sizes);
@@ -241,12 +241,12 @@ export default function EditProductPage() {
     setLoading(false);
   }
 
-  // Derived categories object for easy lookup
+  // Derived categories object for easy lookup (ID based)
   const categories: Record<string, string[]> = {};
   dbCategories.forEach(cat => {
-    categories[cat.name] = dbSubcategories
+    categories[cat.id] = dbSubcategories
       .filter(sub => sub.category_id === cat.id)
-      .map(sub => sub.name);
+      .map(sub => sub.id);
   });
   
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -893,8 +893,8 @@ export default function EditProductPage() {
                     }}
                     className="w-full px-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm outline-none focus:bg-white focus:border-brand-gold transition-all appearance-none cursor-pointer pr-10 font-medium"
                   >
-                    {Object.keys(categories).map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
+                    {dbCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
                     ))}
                   </select>
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted group-hover:text-brand-gold transition-colors">
@@ -916,8 +916,8 @@ export default function EditProductPage() {
                     disabled={!selectedCategory}
                   >
                     <option value="" disabled>Select Sub-category</option>
-                    {categories[selectedCategory as keyof typeof categories]?.map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
+                    {dbSubcategories.filter(sub => sub.category_id === selectedCategory).map(sub => (
+                      <option key={sub.id} value={sub.id}>{sub.name}</option>
                     ))}
                   </select>
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-text-muted group-hover:text-brand-gold transition-colors">

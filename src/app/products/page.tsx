@@ -98,7 +98,7 @@ export default function ProductsPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("products")
-      .select("*")
+      .select("*, category_ref:categories(name), subcategory_ref:subcategories(name)")
       .order("created_at", { ascending: false });
     if (!error && data) setProducts(data as Product[]);
     setLoading(false);
@@ -110,14 +110,14 @@ export default function ProductsPage() {
       ? true
       : activeTab === "Flash Sale"
         ? badges.some(b => ["SALE", "FLASH"].includes(b))
-        : product.category === activeTab;
+        : product.category_ref?.name === activeTab;
 
     const query = searchQuery.toLowerCase();
     const matchesSearch =
       product.name.toLowerCase().includes(query) ||
       product.id.toLowerCase().includes(query) ||
-      product.category.toLowerCase().includes(query) ||
-      product.subcategory.toLowerCase().includes(query);
+      (product.category_ref?.name || "").toLowerCase().includes(query) ||
+      (product.subcategory_ref?.name || "").toLowerCase().includes(query);
 
     const matchesPrice =
       (!priceRange.min || product.price >= parseFloat(priceRange.min)) &&

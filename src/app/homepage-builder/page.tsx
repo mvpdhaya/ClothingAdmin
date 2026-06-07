@@ -699,9 +699,12 @@ export default function HomepageBuilderPage() {
                                     <span className="text-[10px] font-bold">{section.name}</span>
                                     <span className="text-[6px] text-text-muted font-bold uppercase tracking-wider">
                                       {section.productType === "all" ? "All Products" : 
-                                       section.productType === "category" ? `Category: ${section.productLink}` : 
-                                       section.productType === "sale" ? `${section.productLink}% OFF` : 
                                        section.productType === "badge" ? `Badge: ${section.productLink}` :
+                                       section.productType === "category" ? `Category: ${
+                                         availableCategories.find(c => c.id === section.productLink)?.name || 
+                                         dbSubcategories.find(s => s.id === section.productLink)?.name || 
+                                         section.productLink
+                                       }` :
                                        `Link: ${section.productLink}`}
                                     </span>
                                   </div>
@@ -985,7 +988,7 @@ export default function HomepageBuilderPage() {
                                 let newLink = currentButtonLink;
                                 if (newType === "sale") newLink = "50";
                                 else if (newType === "badge") newLink = "new";
-                                else if (newType === "category") newLink = availableCategories[0]?.name || "";
+                                else if (newType === "category") newLink = availableCategories[0]?.id || "";
                                 
                                 if (isDouble) {
                                   updateField('buttonType', newType);
@@ -1055,12 +1058,12 @@ export default function HomepageBuilderPage() {
                               >
                                 <optgroup label="Main Categories">
                                   {availableCategories.map(cat => (
-                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                                   ))}
                                 </optgroup>
                                 <optgroup label="Subcategories">
                                   {dbSubcategories.map(sub => (
-                                    <option key={sub.id} value={sub.name}>{sub.name}</option>
+                                    <option key={sub.id} value={sub.id}>{sub.name}</option>
                                   ))}
                                 </optgroup>
                               </select>

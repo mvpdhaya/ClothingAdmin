@@ -43,8 +43,10 @@ export interface OrderItem {
 export interface Product {
   id: string;
   name: string;
-  category: string;
-  subcategory: string;
+  category: string; // Now stores UUID
+  subcategory: string; // Now stores UUID
+  category_ref?: { name: string };
+  subcategory_ref?: { name: string };
   price: number;
   old_price?: number;
   discount?: string;

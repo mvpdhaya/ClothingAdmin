@@ -223,10 +223,10 @@ export default function Dashboard() {
         // Fetch categories for top products
         const topIds = topEntries.map(p => p.id).filter(Boolean);
         const { data: categoryData } = topIds.length > 0
-          ? await supabase.from("products").select("id, category").in("id", topIds)
+          ? await supabase.from("products").select("id, category_ref:categories(name)").in("id", topIds)
           : { data: [] };
         const categoryMap: Record<string, string> = {};
-        (categoryData ?? []).forEach((p: any) => { categoryMap[p.id] = p.category ?? "—"; });
+        (categoryData ?? []).forEach((p: any) => { categoryMap[p.id] = p.category_ref?.name ?? "—"; });
 
         setTopProducts(
           topEntries.map(p => ({
